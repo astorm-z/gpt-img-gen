@@ -41,10 +41,7 @@ const distHtml = htmlSource
     `<script src="./assets/${jsFileName}" defer></script>`
   );
 
-await Promise.all([
-  writeFile(path.join(distDir, 'index.html'), distHtml, 'utf8'),
-  writeFile(path.join(distDir, 'gen.html'), createLegacyRedirectHtml(), 'utf8')
-]);
+await writeFile(path.join(distDir, 'index.html'), distHtml, 'utf8');
 
 console.log(`built dist/index.html`);
 console.log(`built dist/assets/${cssFileName} (${formatBytes(cssOutput.length)})`);
@@ -93,23 +90,6 @@ async function tryTerserMinify(source) {
   } catch {
     return '';
   }
-}
-
-function createLegacyRedirectHtml() {
-  return `<!doctype html>
-<html lang="zh-CN">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>AI生图</title>
-  <meta http-equiv="refresh" content="0; url=./index.html">
-  <script>location.replace('./index.html' + location.search + location.hash);</script>
-</head>
-<body>
-  <noscript>请打开 <a href="./index.html">index.html</a></noscript>
-</body>
-</html>
-`;
 }
 
 function formatBytes(bytes) {
