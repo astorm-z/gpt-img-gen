@@ -223,6 +223,15 @@ label,
   line-height: 1.5;
 }
 
+@media (hover: none) and (pointer: coarse) {
+  /* iOS Safari zooms focused form controls below 16px. */
+  .input,
+  .select,
+  .textarea {
+    font-size: 16px;
+  }
+}
+
 .input:hover:not(:disabled),
 .select:hover:not(:disabled),
 .textarea:hover:not(:disabled) {
