@@ -1,0 +1,118 @@
+import { createHash } from 'node:crypto';
+import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const distDir = path.join(root, 'dist');
+const assetsDir = path.join(distDir, 'assets');
+
+const htmlPath = path.join(root, 'index.html');
+const cssPath = path.join(root, 'src', 'styles.css');
+const jsPath = path.join(root, 'src', 'main.js');
+
+await rm(distDir, { recursive: true, force: true });
+await mkdir(assetsDir, { recursive: true });
+
+const [htmlSource, cssSource, jsSource] = await Promise.all([
+  readFile(htmlPath, 'utf8'),
+  readFile(cssPath, 'utf8'),
+  readFile(jsPath, 'utf8')
+]);
+
+const cssOutput = minifyCss(cssSource);
+const jsOutput = await minifyJs(jsSource);
+
+const cssFileName = `${hashContent(cssOutput)}.css`;
+const jsFileName = `${hashContent(jsOutput)}.js`;
+
+await Promise.all([
+  writeFile(path.join(assetsDir, cssFileName), cssOutput, 'utf8'),
+  writeFile(path.join(assetsDir, jsFileName), jsOutput, 'utf8')
+]);
+
+const distHtml = htmlSource
+  .replace(
+    /\s*<link rel="stylesheet" href="\/src\/styles\.css">\s*/,
+    `\n  <link rel="stylesheet" href="./assets/${cssFileName}">\n`
+  )
+  .replace(
+    /<script src="\/src\/main\.js" defer><\/script>/,
+    `<script src="./assets/${jsFileName}" defer></script>`
+  );
+
+await Promise.all([
+  writeFile(path.join(distDir, 'index.html'), distHtml, 'utf8'),
+  writeFile(path.join(distDir, 'gen.html'), createLegacyRedirectHtml(), 'utf8')
+]);
+
+console.log(`built dist/index.html`);
+console.log(`built dist/assets/${cssFileName} (${formatBytes(cssOutput.length)})`);
+console.log(`built dist/assets/${jsFileName} (${formatBytes(jsOutput.length)})`);
+
+function hashContent(content) {
+  return createHash('sha256').update(content).digest('hex').slice(0, 12);
+}
+
+function minifyCss(source) {
+  return source
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/\s+/g, ' ')
+    .replace(/\s*([{}:;,>+~])\s*/g, '$1')
+    .replace(/;}/g, '}')
+    .trim();
+}
+
+async function minifyJs(source) {
+  const terserOutput = await tryTerserMinify(source);
+  if (terserOutput) return terserOutput;
+
+  return source
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line && !line.startsWith('//'))
+    .join('\n');
+}
+
+async function tryTerserMinify(source) {
+  try {
+    const { minify } = await import('terser');
+    const result = await minify(source, {
+      compress: {
+        passes: 2,
+        toplevel: true
+      },
+      mangle: {
+        toplevel: true
+      },
+      format: {
+        comments: false
+      }
+    });
+    return result.code || '';
+  } catch {
+    return '';
+  }
+}
+
+function createLegacyRedirectHtml() {
+  return `<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AI生图</title>
+  <meta http-equiv="refresh" content="0; url=./index.html">
+  <script>location.replace('./index.html' + location.search + location.hash);</script>
+</head>
+<body>
+  <noscript>请打开 <a href="./index.html">index.html</a></noscript>
+</body>
+</html>
+`;
+}
+
+function formatBytes(bytes) {
+  if (bytes < 1024) return `${bytes} B`;
+  return `${(bytes / 1024).toFixed(1)} KB`;
+}

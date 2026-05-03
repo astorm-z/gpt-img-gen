@@ -1,0 +1,14 @@
+{
+  "name": "gpt-image-gen2",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node scripts/server.mjs . 5173",
+    "build": "node scripts/build.mjs",
+    "preview": "node scripts/server.mjs dist 4173"
+  },
+  "devDependencies": {
+    "terser": "^5.46.2"
+  }
+}

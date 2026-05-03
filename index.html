@@ -1,0 +1,282 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AI生图</title>
+  <link rel="stylesheet" href="/src/styles.css">
+</head>
+<body>
+<div class="toast-host" id="toastHost" aria-live="polite"></div>
+
+<div class="page">
+  <header class="topbar">
+    <div class="title-wrap">
+      <h1>AI生图</h1>
+      <p class="subtitle">面向 Responses API 的创作控制台，配置、上传、生成和历史结果集中管理。</p>
+    </div>
+  </header>
+
+  <main class="shell">
+    <section class="panel form-panel" aria-label="生图表单">
+      <div class="section">
+        <details class="config-details" id="configDetails" open>
+          <summary>
+            <div>
+              <h2>接口配置</h2>
+            </div>
+            <span class="hint config-summary is-unconfigured" id="configSummary">未配置</span>
+          </summary>
+          <div class="config-body">
+            <div class="field">
+              <label for="apiUrl">API URL</label>
+              <input class="input" id="apiUrl" value="https://ai.du-bby.site" autocomplete="off" spellcheck="false" placeholder="https://ai.du-bby.site">
+            </div>
+
+            <div class="field">
+              <div class="field-label-row">
+                <label for="apiKey">API Key</label>
+                <div class="field-label-actions">
+                  <button class="text-action" id="fillFreeKeyButton" type="button">填充免费key</button>
+                  <a class="text-action" href="https://ai.du-bby.site" target="_blank" rel="noopener noreferrer">获取专属key</a>
+                </div>
+              </div>
+              <div class="key-row">
+                <input class="input" id="apiKey" type="password" autocomplete="off" spellcheck="false" placeholder="sk-...">
+                <button class="btn btn-sm" id="toggleKeyButton" type="button">显示</button>
+              </div>
+              <div class="hint free-key-notice hidden" id="freeKeyNotice">此key为公益免费，不定期投放额度</div>
+              <div class="hint key-balance-notice hidden" id="apiKeyBalanceNotice">该API Key所剩余额不足</div>
+            </div>
+
+            <div class="action-row">
+              <button class="btn btn-primary" id="saveConfigButton" type="button">保存配置</button>
+            </div>
+          </div>
+        </details>
+      </div>
+
+      <div class="section">
+        <div class="field">
+          <span class="label">模式</span>
+          <div class="segmented" role="tablist" aria-label="生图模式">
+            <button class="segment active" type="button" role="tab" aria-selected="true" data-mode="generate">文生图</button>
+            <button class="segment" type="button" role="tab" aria-selected="false" data-mode="edit">图生图</button>
+            <button class="segment" type="button" role="tab" aria-selected="false" data-mode="mask">图生图（遮罩）</button>
+          </div>
+        </div>
+
+        <div class="field inline">
+          <div class="field">
+            <label for="responseModel">Responses 模型</label>
+            <select class="select" id="responseModel">
+              <option value="gpt-5.5">gpt-5.5</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="imageModel">图片模型</label>
+            <input class="input" id="imageModel" value="gpt-image-2" readonly aria-readonly="true">
+          </div>
+        </div>
+        <div class="field">
+          <label for="prompt">提示词</label>
+          <textarea class="textarea" id="prompt" rows="4" placeholder="例如：高级产品摄影风格的玻璃香水瓶，浅灰背景。"></textarea>
+          <div class="prompt-toolbar">
+            <div class="prompt-actions">
+              <button class="btn btn-sm" id="clearPromptButton" type="button">清空提示词</button>
+            </div>
+            <span class="prompt-count" id="promptCount">0 字</span>
+          </div>
+          <div class="hint" id="promptHint">建议描述主体、风格、镜头和背景，效果会更稳定。</div>
+        </div>
+
+        <div class="source-panel soft-box" id="sourcePanel" tabindex="0" aria-label="源图上传区域">
+          <div class="source-header">
+            <div>
+              <div class="label" id="sourceTitle">源图</div>
+              <div class="hint" id="sourceHint">图生图会将一张或多张源图作为参考图提交。</div>
+            </div>
+            <label class="btn btn-sm">
+              添加图片
+              <input class="file-input" id="sourceFileInput" type="file" accept="image/png,image/jpeg,image/webp" multiple>
+            </label>
+          </div>
+          <div class="source-grid" id="sourceGrid"></div>
+          <div class="empty-box" id="sourceEmpty" role="button" tabindex="0">
+            <div class="state-title">拖拽或粘贴图片</div>
+            <div>支持 PNG、JPEG、WebP，也可以点击这里选择文件。</div>
+          </div>
+
+          <div class="mask-panel" id="maskPanel">
+            <div class="section-title">
+              <div>
+                <h3>遮罩编辑器</h3>
+                <p>红色区域会导出为透明遮罩，表示希望模型修改的区域。</p>
+              </div>
+              <button class="btn btn-sm" id="maskFullscreenButton" type="button">放大编辑</button>
+            </div>
+
+            <div class="mask-tools">
+              <button class="btn btn-sm btn-primary" type="button" data-mask-tool="brush" aria-pressed="true">笔刷</button>
+              <button class="btn btn-sm" type="button" data-mask-tool="circle" aria-pressed="false">圆形</button>
+              <button class="btn btn-sm" type="button" data-mask-tool="rectangle" aria-pressed="false">矩形</button>
+              <button class="btn btn-sm" type="button" data-mask-tool="eraser" aria-pressed="false">橡皮</button>
+              <div class="range-wrap">
+                <span>笔刷大小</span>
+                <input id="maskBrushSize" type="range" min="4" max="120" step="1" value="36">
+                <span id="maskBrushValue">36</span>
+              </div>
+            </div>
+
+            <div class="toolbar">
+              <button class="btn btn-sm" id="maskUndoButton" type="button" disabled>撤销</button>
+              <button class="btn btn-sm btn-text-danger" id="maskClearButton" type="button" disabled>清空遮罩</button>
+              <button class="btn btn-sm" id="maskPreviewButton" type="button" disabled>预览遮罩</button>
+            </div>
+
+            <div class="mask-frame">
+              <div class="mask-canvas-wrap">
+                <canvas id="maskBaseCanvas" width="1024" height="1024"></canvas>
+                <canvas id="maskDrawingCanvas" width="1024" height="1024"></canvas>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="field">
+          <label for="size">尺寸</label>
+          <select class="select" id="size">
+            <option value="1024x1024">1k - 1:1 (1024x1024) - 正方形</option>
+            <option value="2048x2048">2k - 1:1 (2048x2048) - 正方形</option>
+            <option value="2016x1344">2k - 3:2 (2016x1344) - 横屏</option>
+            <option value="1344x2016">2k - 2:3 (1344x2016) - 竖屏</option>
+            <option value="2048x1536">2k - 4:3 (2048x1536) - 横屏</option>
+            <option value="1536x2048">2k - 3:4 (1536x2048) - 竖屏</option>
+            <option value="2048x1152">2k - 16:9 (2048x1152) - 横屏</option>
+            <option value="1152x2048">2k - 9:16 (1152x2048) - 竖屏</option>
+            <option value="2880x2880">4k - 1:1 (2880x2880) - 正方形</option>
+            <option value="3504x2336">4k - 3:2 (3504x2336) - 横屏</option>
+            <option value="2336x3504">4k - 2:3 (2336x3504) - 竖屏</option>
+            <option value="3264x2448">4k - 4:3 (3264x2448) - 横屏</option>
+            <option value="2448x3264">4k - 3:4 (2448x3264) - 竖屏</option>
+            <option value="3840x2160">4k - 16:9 (3840x2160) - 横屏</option>
+            <option value="2160x3840">4k - 9:16 (2160x3840) - 竖屏</option>
+            <option value="custom">自定义</option>
+          </select>
+          <div class="size-summary" id="sizeSummary">当前输出：1024x1024，1:1 正方形。</div>
+        </div>
+
+        <div class="custom-size soft-box" id="customSizePanel">
+          <div class="field">
+            <label for="customSizeWidth">宽度</label>
+            <input class="input" id="customSizeWidth" type="number" min="16" max="3840" step="16" value="1024">
+          </div>
+          <div class="field">
+            <label for="customSizeHeight">高度</label>
+            <input class="input" id="customSizeHeight" type="number" min="16" max="3840" step="16" value="1024">
+          </div>
+          <div class="hint custom-size-hint">最大边长不超过 3840px，宽高为 16px 倍数，长短边比例不超过 3:1，总像素数在 655,360 到 8,294,400 之间。</div>
+        </div>
+      </div>
+
+      <div class="section">
+        <details class="advanced" id="advancedDetails">
+          <summary>
+            <span>高级参数</span>
+            <span class="hint">默认即可</span>
+          </summary>
+          <div class="advanced-body">
+            <div class="field inline">
+              <div class="field">
+                <label for="quality">质量</label>
+                <select class="select" id="quality">
+                  <option value="">默认（auto）</option>
+                  <option value="low">低</option>
+                  <option value="medium">中</option>
+                  <option value="high">高</option>
+                </select>
+              </div>
+              <div class="field">
+                <label for="background">背景</label>
+                <select class="select" id="background">
+                  <option value="">默认</option>
+                  <option value="transparent">透明</option>
+                  <option value="opaque">不透明</option>
+                  <option value="auto">自动</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="field inline">
+              <div class="field">
+                <label for="outputFormat">输出格式</label>
+                <select class="select" id="outputFormat">
+                  <option value="">默认</option>
+                  <option value="png">png</option>
+                  <option value="jpeg">jpeg</option>
+                  <option value="webp">webp</option>
+                </select>
+              </div>
+              <div class="field">
+                <label for="outputCompression">输出压缩</label>
+                <input class="input" id="outputCompression" type="number" min="0" max="100" placeholder="0-100">
+              </div>
+            </div>
+          </div>
+        </details>
+      </div>
+
+      <div class="section submit-section">
+        <div class="submit-bar">
+          <div class="submit-summary truncate" id="submitSummary">准备生成：文生图 · 1024x1024 · PNG</div>
+          <div class="action-row">
+            <button class="btn" id="clearHistoryButton" type="button">清空历史记录</button>
+            <button class="btn" id="resetButton" type="button">重置表单</button>
+            <button class="btn btn-primary" id="submitButton" type="button">开始生成</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel result-panel" aria-label="生成结果">
+      <div class="panel-heading">
+        <div>
+          <h2>生成结果</h2>
+          <p id="resultSummary">生成完成后会在这里展示最新结果。</p>
+        </div>
+        <div class="toolbar" id="resultBulkActions">
+          <button class="btn btn-sm" id="copyAllButton" type="button">复制全部链接</button>
+          <button class="btn btn-sm" id="downloadAllButton" type="button">下载全部</button>
+        </div>
+      </div>
+      <div id="resultBody"></div>
+    </section>
+
+    <aside class="panel history-panel" aria-label="历史记录">
+      <div class="panel-heading">
+        <div>
+          <h2>历史记录</h2>
+          <p id="historySummary">浏览器本地保留最近 10 次结果。</p>
+        </div>
+        <span class="pill" id="historyCount">0/10</span>
+      </div>
+      <div id="historyList" class="history-list"></div>
+    </aside>
+  </main>
+</div>
+
+<div class="preview-modal" id="previewModal" aria-modal="true" role="dialog">
+  <div class="preview-title" id="previewTitle"></div>
+  <button class="preview-close" id="previewCloseButton" type="button" aria-label="关闭预览">×</button>
+  <img class="preview-image" id="previewImage" alt="preview" draggable="false">
+  <div class="preview-toolbar" aria-label="预览缩放控制">
+    <button class="btn btn-sm" id="previewZoomOutButton" type="button">缩小</button>
+    <button class="btn btn-sm" id="previewZoomResetButton" type="button">100%</button>
+    <button class="btn btn-sm" id="previewZoomInButton" type="button">放大</button>
+  </div>
+</div>
+  <script src="/src/main.js" defer></script>
+</body>
+</html>
