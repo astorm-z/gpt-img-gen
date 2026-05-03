@@ -82,6 +82,14 @@ textarea:disabled {
   z-index: 1;
 }
 
+body.mask-scroll-lock .page::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  background: rgba(15, 23, 42, 0.48);
+}
+
 .topbar {
   position: sticky;
   top: 12px;
@@ -160,6 +168,10 @@ h1 {
   align-items: center;
   gap: 8px;
   margin-bottom: 10px;
+}
+
+.section-title > div {
+  min-width: 0;
 }
 
 .section-title h2,
@@ -731,6 +743,11 @@ details.config-details > summary p {
   flex-direction: column;
   overflow: hidden;
   padding: 14px;
+}
+
+#maskFullscreenButton {
+  flex: 0 0 auto;
+  white-space: nowrap;
 }
 
 .mask-tools {
