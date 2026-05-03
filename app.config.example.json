@@ -1,0 +1,8 @@
+{
+  "apiUrl": "",
+  "apiKey": "",
+  "apiPathPrefix": "/v1",
+  "keyUrl": "",
+  "apiKeyButtonText": "填充默认key",
+  "apiKeyNotice": "当前使用配置文件中的默认 API Key。"
+}

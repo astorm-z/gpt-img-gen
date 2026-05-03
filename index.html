@@ -30,15 +30,15 @@
           <div class="config-body">
             <div class="field">
               <label for="apiUrl">API URL</label>
-              <input class="input" id="apiUrl" value="https://ai.du-bby.site" autocomplete="off" spellcheck="false" placeholder="https://ai.du-bby.site">
+              <input class="input" id="apiUrl" autocomplete="off" spellcheck="false" placeholder="请填写 API URL">
             </div>
 
             <div class="field">
               <div class="field-label-row">
                 <label for="apiKey">API Key</label>
                 <div class="field-label-actions">
-                  <button class="text-action" id="fillFreeKeyButton" type="button">填充免费key</button>
-                  <a class="text-action" href="https://ai.du-bby.site" target="_blank" rel="noopener noreferrer">获取专属key</a>
+                  <button class="text-action hidden" id="fillFreeKeyButton" type="button">填充默认key</button>
+                  <a class="text-action hidden" id="getKeyLink" href="#" target="_blank" rel="noopener noreferrer">获取专属key</a>
                 </div>
               </div>
               <div class="key-row">

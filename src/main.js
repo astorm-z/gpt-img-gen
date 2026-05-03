@@ -2,9 +2,8 @@ const CONFIG_CACHE_KEY = 'gpt-image-gen2:config';
 const ADVANCED_CACHE_KEY = 'gpt-image-gen2:advanced';
 const MODEL_LIST_CACHE_KEY = 'gpt-image-gen2:model-list-cache';
 const RESPONSE_MODEL_SELECTION_CACHE_KEY = 'gpt-image-gen2:response-model-selection';
-const DEFAULT_API_URL = 'https://ai.du-bby.site';
-const FREE_API_KEY = 'sk-d3e86b4253faf263f8a1d1cf6ab17df16caac0545be2bad2dc5d35128fce30b7';
-const API_PATH_PREFIX = '/v1';
+const APP_CONFIG_PATH = './app.config.json';
+const FALLBACK_API_PATH_PREFIX = '/v1';
 const HISTORY_DB_NAME = 'gpt-image-gen2-image-generation';
 const HISTORY_DB_VERSION = 1;
 const HISTORY_DB_STORE = 'history';
@@ -34,12 +33,14 @@ const SIZE_PRESET_VALUES = new Set([
   '1536x2048', '2048x1152', '1152x2048', '2880x2880', '3504x2336',
   '2336x3504', '3264x2448', '2448x3264', '3840x2160', '2160x3840'
 ]);
+let runtimeConfig = createDefaultRuntimeConfig();
 const el = {
   configDetails: document.getElementById('configDetails'),
   configSummary: document.getElementById('configSummary'),
   apiUrl: document.getElementById('apiUrl'),
   apiKey: document.getElementById('apiKey'),
   fillFreeKeyButton: document.getElementById('fillFreeKeyButton'),
+  getKeyLink: document.getElementById('getKeyLink'),
   freeKeyNotice: document.getElementById('freeKeyNotice'),
   apiKeyBalanceNotice: document.getElementById('apiKeyBalanceNotice'),
   toggleKeyButton: document.getElementById('toggleKeyButton'),
@@ -138,6 +139,8 @@ const state = {
 init();
 
 async function init() {
+  runtimeConfig = await loadRuntimeConfig();
+  applyRuntimeConfigUI();
   restoreConfig();
   restoreAdvancedSettings();
   bindEvents();
@@ -157,9 +160,9 @@ function bindEvents() {
   el.apiUrl.addEventListener('input', markConfigUnchecked);
   el.apiKey.addEventListener('input', () => {
     markConfigUnchecked();
-    updateFreeKeyNotice();
+    updateConfiguredKeyNotice();
   });
-  el.fillFreeKeyButton.addEventListener('click', fillFreeApiKey);
+  el.fillFreeKeyButton.addEventListener('click', fillConfiguredApiKey);
   el.toggleKeyButton.addEventListener('click', toggleApiKeyVisibility);
   el.saveConfigButton.addEventListener('click', saveConfig);
 
@@ -256,6 +259,61 @@ function bindEvents() {
   });
 }
 
+async function loadRuntimeConfig() {
+  try {
+    const response = await fetch(APP_CONFIG_PATH, { cache: 'no-store' });
+    if (!response.ok) return createDefaultRuntimeConfig();
+    return normalizeRuntimeConfig(await response.json());
+  } catch (error) {
+    console.warn('Failed to load runtime config', error);
+    return createDefaultRuntimeConfig();
+  }
+}
+
+function normalizeRuntimeConfig(value) {
+  const defaults = createDefaultRuntimeConfig();
+  if (!isRecord(value)) return defaults;
+
+  const apiPathPrefix = Object.prototype.hasOwnProperty.call(value, 'apiPathPrefix')
+    ? normalizeApiPathPrefix(value.apiPathPrefix)
+    : defaults.apiPathPrefix;
+
+  return {
+    apiUrl: normalizeApiBaseUrl(firstConfigString(value.apiUrl, value.defaultApiUrl), apiPathPrefix),
+    apiKey: firstConfigString(value.apiKey, value.defaultApiKey, value.freeApiKey),
+    apiPathPrefix,
+    keyUrl: normalizeExternalLink(firstConfigString(value.keyUrl, value.getKeyUrl)),
+    apiKeyButtonText: firstConfigString(value.apiKeyButtonText, value.freeApiKeyButtonText) || defaults.apiKeyButtonText,
+    apiKeyNotice: firstConfigString(value.apiKeyNotice, value.freeApiKeyNotice) || defaults.apiKeyNotice
+  };
+}
+
+function createDefaultRuntimeConfig() {
+  return {
+    apiUrl: '',
+    apiKey: '',
+    apiPathPrefix: FALLBACK_API_PATH_PREFIX,
+    keyUrl: '',
+    apiKeyButtonText: '填充默认key',
+    apiKeyNotice: '当前使用配置文件中的默认 API Key。'
+  };
+}
+
+function applyRuntimeConfigUI() {
+  el.apiUrl.placeholder = runtimeConfig.apiUrl || '请填写 API URL';
+  el.fillFreeKeyButton.textContent = runtimeConfig.apiKeyButtonText;
+  el.fillFreeKeyButton.classList.toggle('hidden', !runtimeConfig.apiKey);
+  el.freeKeyNotice.textContent = runtimeConfig.apiKeyNotice;
+
+  if (runtimeConfig.keyUrl) {
+    el.getKeyLink.href = runtimeConfig.keyUrl;
+    el.getKeyLink.classList.remove('hidden');
+  } else {
+    el.getKeyLink.removeAttribute('href');
+    el.getKeyLink.classList.add('hidden');
+  }
+}
+
 function restoreConfig() {
   let config = null;
   try {
@@ -263,14 +321,14 @@ function restoreConfig() {
   } catch {
     localStorage.removeItem(CONFIG_CACHE_KEY);
   }
-  el.apiUrl.value = typeof config?.apiUrl === 'string' && config.apiUrl.trim()
-    ? config.apiUrl.trim()
-    : DEFAULT_API_URL;
-  el.apiKey.value = typeof config?.apiKey === 'string' ? config.apiKey : '';
+  const cachedApiUrl = normalizeApiBaseUrl(config?.apiUrl, runtimeConfig.apiPathPrefix);
+  const cachedApiKey = firstConfigString(config?.apiKey);
+  el.apiUrl.value = cachedApiUrl || runtimeConfig.apiUrl;
+  el.apiKey.value = cachedApiKey || runtimeConfig.apiKey;
   state.configCheckStatus = 'unconfigured';
   el.configDetails.open = !hasCompleteConfigFields();
   clearStaleModelCaches(hasCompleteConfigFields() ? getConfigSignature() : '');
-  updateFreeKeyNotice();
+  updateConfiguredKeyNotice();
   setApiKeyBalanceNotice(false);
   updateConfigSummary();
 }
@@ -297,15 +355,16 @@ function toggleApiKeyVisibility() {
   el.toggleKeyButton.textContent = shouldShow ? '隐藏' : '显示';
 }
 
-function fillFreeApiKey() {
-  el.apiKey.value = FREE_API_KEY;
+function fillConfiguredApiKey() {
+  if (!runtimeConfig.apiKey) return;
+  el.apiKey.value = runtimeConfig.apiKey;
   markConfigUnchecked();
-  updateFreeKeyNotice();
+  updateConfiguredKeyNotice();
   el.apiKey.focus();
 }
 
-function updateFreeKeyNotice() {
-  el.freeKeyNotice.classList.toggle('hidden', getApiKey() !== FREE_API_KEY);
+function updateConfiguredKeyNotice() {
+  el.freeKeyNotice.classList.toggle('hidden', !runtimeConfig.apiKey || getApiKey() !== runtimeConfig.apiKey);
 }
 
 function setApiKeyBalanceNotice(visible) {
@@ -317,7 +376,7 @@ function getApiKey() {
 }
 
 function hasCompleteConfigFields() {
-  return Boolean(trimmedStringValue(el.apiUrl.value)) && Boolean(getApiKey());
+  return Boolean(getApiBaseUrl()) && Boolean(getApiKey());
 }
 
 function getConfigSignature() {
@@ -325,17 +384,17 @@ function getConfigSignature() {
 }
 
 function getApiBaseUrl() {
-  let value = el.apiUrl.value.trim() || DEFAULT_API_URL;
-  value = value.replace(/\/+$/, '');
-  value = value.replace(/\/(?:responses|models)$/i, '');
-  value = value.replace(/\/v1$/i, '');
-  return value || DEFAULT_API_URL;
+  return normalizeApiBaseUrl(el.apiUrl.value, runtimeConfig.apiPathPrefix);
 }
 
 function buildApiUrl(path) {
   const normalizedPath = String(path || '').startsWith('/') ? String(path || '') : `/${path || ''}`;
-  const prefix = API_PATH_PREFIX ? `/${API_PATH_PREFIX.replace(/^\/+|\/+$/g, '')}` : '';
+  const prefix = getApiPathPrefix();
   return `${getApiBaseUrl()}${prefix}${normalizedPath}`;
+}
+
+function getApiPathPrefix() {
+  return normalizeApiPathPrefix(runtimeConfig.apiPathPrefix);
 }
 
 function updateConfigSummary() {
@@ -2803,6 +2862,45 @@ function stringValue(value) {
 
 function trimmedStringValue(value) {
   return stringValue(value).trim();
+}
+
+function firstConfigString(...values) {
+  for (const value of values) {
+    const normalized = trimmedStringValue(value);
+    if (normalized) return normalized;
+  }
+  return '';
+}
+
+function normalizeApiBaseUrl(value, apiPathPrefix = FALLBACK_API_PATH_PREFIX) {
+  let normalized = trimmedStringValue(value);
+  if (!normalized) return '';
+  normalized = normalized.replace(/\/+$/, '');
+  normalized = normalized.replace(/\/(?:responses|models)$/i, '');
+  const prefix = normalizeApiPathPrefix(apiPathPrefix);
+  if (prefix) normalized = normalized.replace(new RegExp(`${escapeRegExp(prefix)}$`, 'i'), '');
+  normalized = normalized.replace(/\/+$/, '');
+  return normalized;
+}
+
+function normalizeApiPathPrefix(value) {
+  const normalized = trimmedStringValue(value).replace(/^\/+|\/+$/g, '');
+  return normalized ? `/${normalized}` : '';
+}
+
+function normalizeExternalLink(value) {
+  const normalized = trimmedStringValue(value);
+  if (!normalized) return '';
+  try {
+    const url = new URL(normalized, window.location.href);
+    return url.protocol === 'http:' || url.protocol === 'https:' ? url.href : '';
+  } catch {
+    return '';
+  }
+}
+
+function escapeRegExp(value) {
+  return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 function greatestCommonDivisor(left, right) {

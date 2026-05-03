@@ -6,6 +6,27 @@
 
 ## 开发
 
+先复制运行时配置示例：
+
+```powershell
+Copy-Item app.config.example.json app.config.json
+```
+
+然后在 `app.config.json` 中填写接口配置：
+
+```json
+{
+  "apiUrl": "https://你的接口域名",
+  "apiKey": "你的默认 API Key，也可以留空",
+  "apiPathPrefix": "/v1",
+  "keyUrl": "获取专属 key 的页面地址，也可以留空",
+  "apiKeyButtonText": "填充默认key",
+  "apiKeyNotice": "当前使用配置文件中的默认 API Key。"
+}
+```
+
+`app.config.json` 是本地和部署环境的运行时配置文件，已加入 `.gitignore`，不要把真实 API Key 写进 `src/`、`index.html` 或提交到仓库。生产构建会优先复制 `app.config.json` 到 `dist/app.config.json`；如果该文件不存在，则复制空值示例配置。
+
 ```bash
 npm run dev
 ```

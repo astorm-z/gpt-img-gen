@@ -10,6 +10,8 @@ const assetsDir = path.join(distDir, 'assets');
 const htmlPath = path.join(root, 'index.html');
 const cssPath = path.join(root, 'src', 'styles.css');
 const jsPath = path.join(root, 'src', 'main.js');
+const runtimeConfigPath = path.join(root, 'app.config.json');
+const runtimeConfigExamplePath = path.join(root, 'app.config.example.json');
 
 await rm(distDir, { recursive: true, force: true });
 await mkdir(assetsDir, { recursive: true });
@@ -42,6 +44,7 @@ const distHtml = htmlSource
   );
 
 await writeFile(path.join(distDir, 'index.html'), distHtml, 'utf8');
+await copyRuntimeConfig();
 
 console.log(`built dist/index.html`);
 console.log(`built dist/assets/${cssFileName} (${formatBytes(cssOutput.length)})`);
@@ -49,6 +52,24 @@ console.log(`built dist/assets/${jsFileName} (${formatBytes(jsOutput.length)})`)
 
 function hashContent(content) {
   return createHash('sha256').update(content).digest('hex').slice(0, 12);
+}
+
+async function copyRuntimeConfig() {
+  const sourcePath = await pathExists(runtimeConfigPath) ? runtimeConfigPath : runtimeConfigExamplePath;
+  if (!await pathExists(sourcePath)) return;
+
+  const configOutput = await readFile(sourcePath, 'utf8');
+  await writeFile(path.join(distDir, 'app.config.json'), configOutput, 'utf8');
+  console.log(`built dist/app.config.json`);
+}
+
+async function pathExists(filePath) {
+  try {
+    await readFile(filePath, 'utf8');
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function minifyCss(source) {
