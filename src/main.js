@@ -21,6 +21,7 @@ const CUSTOM_SIZE_MIN_PIXELS = 655360;
 const CUSTOM_SIZE_MAX_PIXELS = 8294400;
 const DEFAULT_OUTPUT_COMPRESSION = 100;
 const DEFAULT_INPUT_FIDELITY = 'low';
+const DEFAULT_REASONING_EFFORT = 'xhigh';
 const DEFAULT_MASK_CANVAS_WIDTH = 1024;
 const DEFAULT_MASK_CANVAS_HEIGHT = 1024;
 const MAX_UNDO_STACK_SIZE = 20;
@@ -28,6 +29,7 @@ const MODEL_LIST_CACHE_TTL_MS = 60 * 60 * 1000;
 const FIXED_PARTIAL_IMAGES = 0;
 const SUPPORTED_IMAGE_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp']);
 const INPUT_FIDELITY_UNSUPPORTED_IMAGE_MODELS = new Set(['gpt-image-2', 'gpt-image-1-mini']);
+const REASONING_EFFORT_VALUES = ['none', 'low', 'medium', 'high', 'xhigh'];
 const SIZE_PRESET_VALUES = new Set([
   '1024x1024', '2048x2048', '2016x1344', '1344x2016', '2048x1536',
   '1536x2048', '2048x1152', '1152x2048', '2880x2880', '3504x2336',
@@ -75,7 +77,7 @@ const el = {
   customSizeHeight: document.getElementById('customSizeHeight'),
   advancedDetails: document.getElementById('advancedDetails'),
   quality: document.getElementById('quality'),
-  background: document.getElementById('background'),
+  reasoningEffort: document.getElementById('reasoningEffort'),
   outputFormat: document.getElementById('outputFormat'),
   outputCompression: document.getElementById('outputCompression'),
   clearHistoryButton: document.getElementById('clearHistoryButton'),
@@ -204,7 +206,7 @@ function bindEvents() {
     });
   });
   el.advancedDetails.addEventListener('toggle', persistAdvancedSettings);
-  [el.quality, el.background, el.outputFormat, el.outputCompression].forEach((input) => {
+  [el.quality, el.reasoningEffort, el.outputFormat, el.outputCompression].forEach((input) => {
     input.addEventListener('change', persistAdvancedSettings);
     input.addEventListener('input', persistAdvancedSettings);
   });
@@ -1095,7 +1097,6 @@ function validateGenerationForm() {
     return state.mode === 'mask' ? '遮罩编辑模式需要上传一张原始图片。' : '图生图模式至少需要上传一张源图。';
   }
   if (state.mode === 'mask' && !state.maskHasDrawing) return '请先在原始图片上绘制需要修改的遮罩区域。';
-  if (isGptImage2TransparentBackground()) return 'gpt-image-2 不支持透明背景，请改为自动或不透明背景。';
   if (state.sourceImages.some((preview) => !isSupportedImageFile(preview.file))) return '仅支持 PNG、JPEG、WebP 图片。';
   const sizeError = validateCustomSize();
   if (sizeError) return sizeError;
@@ -1139,6 +1140,7 @@ async function buildRequestInit() {
 
 async function buildResponsesPayload() {
   const outputFormat = resolveOutputFormatValue();
+  const reasoningEffort = resolveReasoningEffortValue();
   const tool = {
     type: 'image_generation',
     model: DEFAULT_IMAGE_MODEL,
@@ -1149,10 +1151,6 @@ async function buildResponsesPayload() {
     moderation: 'low',
     partial_images: FIXED_PARTIAL_IMAGES
   };
-
-  if (!isGptImage2TransparentBackground()) {
-    tool.background = el.background.value || 'auto';
-  }
 
   if (outputFormat === 'jpeg' || outputFormat === 'webp') {
     tool.output_compression = normalizeOutputCompression(el.outputCompression.value) ?? DEFAULT_OUTPUT_COMPRESSION;
@@ -1195,6 +1193,7 @@ async function buildResponsesPayload() {
     ],
     tools: [tool],
     tool_choice: { type: 'image_generation' },
+    reasoning: { effort: reasoningEffort },
     store: false,
     stream: true
   };
@@ -1213,8 +1212,8 @@ function resolveOutputFormatValue() {
   return trimmedStringValue(el.outputFormat.value) || 'png';
 }
 
-function isGptImage2TransparentBackground() {
-  return trimmedStringValue(el.background.value).toLowerCase() === 'transparent';
+function resolveReasoningEffortValue() {
+  return normalizeReasoningEffort(el.reasoningEffort.value);
 }
 
 function isInputFidelityUnsupportedImageModel() {
@@ -2036,7 +2035,7 @@ function captureCurrentForm() {
     customSizeWidth: stringValue(el.customSizeWidth.value),
     customSizeHeight: stringValue(el.customSizeHeight.value),
     quality: stringValue(el.quality.value),
-    background: stringValue(el.background.value),
+    reasoningEffort: stringValue(el.reasoningEffort.value),
     outputFormat: stringValue(el.outputFormat.value),
     outputCompression: stringValue(el.outputCompression.value),
     advancedOpen: el.advancedDetails.open
@@ -2156,7 +2155,7 @@ function toPlainHistoryEntry(entry) {
       customSizeWidth: entry.form.customSizeWidth,
       customSizeHeight: entry.form.customSizeHeight,
       quality: entry.form.quality,
-      background: entry.form.background,
+      reasoningEffort: entry.form.reasoningEffort,
       outputFormat: entry.form.outputFormat,
       outputCompression: entry.form.outputCompression,
       advancedOpen: entry.form.advancedOpen
@@ -2207,7 +2206,7 @@ function normalizeCachedForm(value) {
     customSizeWidth: normalizedSize.customSizeWidth,
     customSizeHeight: normalizedSize.customSizeHeight,
     quality: normalizeOptionValue(stringValue(value.quality), ['', 'low', 'medium', 'high']),
-    background: normalizeOptionValue(stringValue(value.background), ['', 'transparent', 'opaque', 'auto']),
+    reasoningEffort: normalizeReasoningEffort(value.reasoningEffort),
     outputFormat: normalizeOptionValue(stringValue(value.outputFormat), ['', 'png', 'jpeg', 'webp']),
     outputCompression: stringValue(value.outputCompression),
     advancedOpen: value.advancedOpen === true
@@ -2394,7 +2393,7 @@ function restoreHistoryEntry(entry) {
   el.customSizeWidth.value = entry.form.customSizeWidth;
   el.customSizeHeight.value = entry.form.customSizeHeight;
   el.quality.value = entry.form.quality;
-  el.background.value = entry.form.background;
+  el.reasoningEffort.value = entry.form.reasoningEffort;
   el.outputFormat.value = entry.form.outputFormat;
   el.outputCompression.value = entry.form.outputCompression;
   el.advancedDetails.open = entry.form.advancedOpen;
@@ -2691,7 +2690,7 @@ function restoreAdvancedSettings() {
 
 function applyAdvancedSettings(settings) {
   el.quality.value = settings.quality;
-  el.background.value = settings.background;
+  el.reasoningEffort.value = settings.reasoningEffort;
   el.outputFormat.value = settings.outputFormat;
   el.outputCompression.value = settings.outputCompression;
   el.advancedDetails.open = settings.advancedOpen;
@@ -2700,7 +2699,7 @@ function applyAdvancedSettings(settings) {
 function persistAdvancedSettings() {
   const payload = {
     quality: stringValue(el.quality.value),
-    background: stringValue(el.background.value),
+    reasoningEffort: stringValue(el.reasoningEffort.value),
     outputFormat: stringValue(el.outputFormat.value),
     outputCompression: stringValue(el.outputCompression.value),
     advancedOpen: el.advancedDetails.open
@@ -2714,7 +2713,7 @@ function normalizeAdvancedSettings(value) {
   if (!isRecord(value)) return createDefaultAdvancedSettings();
   return {
     quality: normalizeOptionValue(stringValue(value.quality), ['', 'low', 'medium', 'high']),
-    background: normalizeOptionValue(stringValue(value.background), ['', 'transparent', 'opaque', 'auto']),
+    reasoningEffort: normalizeReasoningEffort(value.reasoningEffort),
     outputFormat: normalizeOptionValue(stringValue(value.outputFormat), ['', 'png', 'jpeg', 'webp']),
     outputCompression: stringValue(value.outputCompression),
     advancedOpen: value.advancedOpen === true
@@ -2724,7 +2723,7 @@ function normalizeAdvancedSettings(value) {
 function createDefaultAdvancedSettings() {
   return {
     quality: '',
-    background: '',
+    reasoningEffort: DEFAULT_REASONING_EFFORT,
     outputFormat: '',
     outputCompression: '',
     advancedOpen: false
@@ -2848,6 +2847,11 @@ function isQuotaExceededError(error) {
 
 function normalizeOptionValue(value, allowedValues) {
   return allowedValues.includes(value) ? value : allowedValues[0];
+}
+
+function normalizeReasoningEffort(value) {
+  const normalized = trimmedStringValue(value);
+  return REASONING_EFFORT_VALUES.includes(normalized) ? normalized : DEFAULT_REASONING_EFFORT;
 }
 
 function isRecord(value) {
