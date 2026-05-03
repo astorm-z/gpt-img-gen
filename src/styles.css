@@ -293,6 +293,54 @@ label,
   min-width: 0;
 }
 
+.label-help-row {
+  justify-content: flex-start;
+  gap: 6px;
+}
+
+.help-trigger {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  min-height: 0;
+  padding: 0;
+  border: 1px solid #cbd5e1;
+  border-radius: 50%;
+  background: #fff;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1;
+  box-shadow: none;
+  cursor: help;
+}
+
+.help-trigger:hover,
+.help-trigger:focus-visible {
+  outline: none;
+  border-color: var(--primary);
+  color: var(--primary-deep);
+  box-shadow: var(--focus);
+}
+
+.help-tooltip {
+  position: fixed;
+  z-index: 140;
+  max-width: min(280px, calc(100vw - 24px));
+  padding: 8px 10px;
+  border-radius: var(--radius-xs);
+  background: rgba(15, 23, 42, 0.94);
+  color: #fff;
+  box-shadow: 0 14px 36px rgba(15, 23, 42, 0.24);
+  font-size: 12px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+  pointer-events: none;
+}
+
 .field-label-actions {
   display: flex;
   align-items: center;

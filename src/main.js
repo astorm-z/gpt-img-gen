@@ -99,6 +99,8 @@ const el = {
   previewZoomOutButton: document.getElementById('previewZoomOutButton'),
   previewZoomResetButton: document.getElementById('previewZoomResetButton'),
   previewZoomInButton: document.getElementById('previewZoomInButton'),
+  tooltipTriggers: Array.from(document.querySelectorAll('[data-tooltip]')),
+  helpTooltip: document.getElementById('helpTooltip'),
   toastHost: document.getElementById('toastHost')
 };
 
@@ -135,7 +137,8 @@ const state = {
   previewZoom: 1,
   previewTransformOrigin: '50% 50%',
   previewOffset: { x: 0, y: 0 },
-  previewDrag: null
+  previewDrag: null,
+  activeTooltipTrigger: null
 };
 
 init();
@@ -253,8 +256,19 @@ function bindEvents() {
   el.previewZoomOutButton.addEventListener('click', () => nudgePreviewZoom(1 / 1.25));
   el.previewZoomResetButton.addEventListener('click', resetPreviewZoom);
   el.previewZoomInButton.addEventListener('click', () => nudgePreviewZoom(1.25));
+  el.tooltipTriggers.forEach((trigger) => {
+    trigger.addEventListener('pointerenter', () => showHelpTooltip(trigger));
+    trigger.addEventListener('pointerleave', () => {
+      if (document.activeElement !== trigger) hideHelpTooltip(trigger);
+    });
+    trigger.addEventListener('focus', () => showHelpTooltip(trigger));
+    trigger.addEventListener('blur', () => hideHelpTooltip(trigger));
+    trigger.addEventListener('click', () => showHelpTooltip(trigger));
+  });
   document.addEventListener('keydown', handleGlobalKeydown);
   document.addEventListener('paste', handleGlobalPaste);
+  window.addEventListener('scroll', updateActiveHelpTooltip, true);
+  window.addEventListener('resize', updateActiveHelpTooltip);
   window.addEventListener('beforeunload', () => {
     clearLocalPreviews(state.sourceImages);
     if (state.maskPreviewObjectUrl) URL.revokeObjectURL(state.maskPreviewObjectUrl);
@@ -871,6 +885,61 @@ function handleGlobalPaste(event) {
   if (files.length === 0) return;
   event.preventDefault();
   addSourceFiles(files);
+}
+
+function showHelpTooltip(trigger) {
+  const text = trimmedStringValue(trigger?.dataset?.tooltip);
+  if (!text || !el.helpTooltip) return;
+  state.activeTooltipTrigger = trigger;
+  trigger.setAttribute('aria-describedby', 'helpTooltip');
+  el.helpTooltip.textContent = text;
+  el.helpTooltip.classList.remove('hidden');
+  updateActiveHelpTooltip();
+}
+
+function hideHelpTooltip(trigger = state.activeTooltipTrigger) {
+  if (trigger && state.activeTooltipTrigger && trigger !== state.activeTooltipTrigger) return;
+  state.activeTooltipTrigger?.removeAttribute('aria-describedby');
+  state.activeTooltipTrigger = null;
+  if (!el.helpTooltip) return;
+  el.helpTooltip.classList.add('hidden');
+  el.helpTooltip.textContent = '';
+  el.helpTooltip.style.left = '';
+  el.helpTooltip.style.top = '';
+}
+
+function updateActiveHelpTooltip() {
+  const trigger = state.activeTooltipTrigger;
+  if (!trigger || !el.helpTooltip || el.helpTooltip.classList.contains('hidden')) return;
+  if (!document.documentElement.contains(trigger)) {
+    hideHelpTooltip(trigger);
+    return;
+  }
+
+  const rect = trigger.getBoundingClientRect();
+  const viewportWidth = document.documentElement.clientWidth;
+  const viewportHeight = window.innerHeight || document.documentElement.clientHeight;
+  if (rect.bottom < 0 || rect.top > viewportHeight || rect.right < 0 || rect.left > viewportWidth) {
+    hideHelpTooltip(trigger);
+    return;
+  }
+
+  const margin = 12;
+  const gap = 8;
+  const tooltipWidth = el.helpTooltip.offsetWidth;
+  const tooltipHeight = el.helpTooltip.offsetHeight;
+  const maxLeft = Math.max(margin, viewportWidth - tooltipWidth - margin);
+  let left = rect.left + rect.width / 2 - tooltipWidth / 2;
+  left = Math.min(Math.max(margin, left), maxLeft);
+
+  let top = rect.top - tooltipHeight - gap;
+  if (top < margin) top = rect.bottom + gap;
+  if (top + tooltipHeight > viewportHeight - margin) {
+    top = Math.max(margin, viewportHeight - tooltipHeight - margin);
+  }
+
+  el.helpTooltip.style.left = `${Math.round(left)}px`;
+  el.helpTooltip.style.top = `${Math.round(top)}px`;
 }
 
 function addSourceFiles(selectedFiles) {
@@ -2671,6 +2740,10 @@ function updatePreviewZoomControl() {
 
 function handleGlobalKeydown(event) {
   if (event.key !== 'Escape') return;
+  if (state.activeTooltipTrigger) {
+    hideHelpTooltip();
+    return;
+  }
   if (state.previewImageUrl) {
     closePreview();
     return;

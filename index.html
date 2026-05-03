@@ -199,7 +199,15 @@
                 </select>
               </div>
               <div class="field">
-                <label for="reasoningEffort">思考深度</label>
+                <div class="field-label-row label-help-row">
+                  <label for="reasoningEffort">思考深度</label>
+                  <button
+                    class="help-trigger"
+                    type="button"
+                    aria-label="思考深度说明"
+                    data-tooltip="思考深度越高，一般效果会越好，但时间会相应比较久，可以按需选择"
+                  >?</button>
+                </div>
                 <select class="select" id="reasoningEffort">
                   <option value="none">无（none）</option>
                   <option value="low">低（low）</option>
@@ -221,7 +229,15 @@
                 </select>
               </div>
               <div class="field">
-                <label for="outputCompression">输出压缩</label>
+                <div class="field-label-row label-help-row">
+                  <label for="outputCompression">输出压缩</label>
+                  <button
+                    class="help-trigger"
+                    type="button"
+                    aria-label="输出压缩说明"
+                    data-tooltip="生成图像的压缩级别（0-100%）。此参数仅支持使用 WebP 或 JPEG 输出格式的 GPT 图像模型，默认值为 100"
+                  >?</button>
+                </div>
                 <input class="input" id="outputCompression" type="number" min="0" max="100" placeholder="0-100">
               </div>
             </div>
@@ -267,6 +283,8 @@
     </aside>
   </main>
 </div>
+
+<div class="help-tooltip hidden" id="helpTooltip" role="tooltip"></div>
 
 <div class="preview-modal" id="previewModal" aria-modal="true" role="dialog">
   <div class="preview-title" id="previewTitle"></div>
