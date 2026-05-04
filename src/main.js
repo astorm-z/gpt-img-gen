@@ -562,6 +562,23 @@ function buildPromptPolishRequestInit() {
 function buildPromptPolishPayload() {
   return {
     model: trimmedStringValue(el.responseModel.value) || DEFAULT_RESPONSE_MODEL,
+    text: {
+      format: {
+        type: 'json_schema',
+        name: 'prompt_polish_options',
+        strict: true,
+        schema: {
+          type: 'object',
+          properties: {
+            prompt1: { type: 'string' },
+            prompt2: { type: 'string' },
+            prompt3: { type: 'string' }
+          },
+          required: ['prompt1', 'prompt2', 'prompt3'],
+          additionalProperties: false
+        }
+      }
+    },
     input: [
       {
         role: 'user',
@@ -585,7 +602,7 @@ function buildPromptPolishInstruction(originalPrompt) {
     `输出 ${PROMPT_POLISH_RESULT_COUNT} 份互不相同、可直接用于生图的完整提示词。`,
     '语言必须保留原提示词的主要语言；如果原提示词主要是中文，全部用中文；如果主要是英文，全部用英文。',
     '三份结果分别偏向：1. 视觉细节与材质；2. 构图、镜头和光线；3. 风格、氛围和审美。',
-    '不要解释，不要 Markdown，不要代码块。只返回 JSON，结构必须是 {"prompts":["...","...","..."]}。',
+    '不要解释，不要 Markdown，不要代码块。只返回符合 schema 的 JSON，字段必须是 prompt1、prompt2、prompt3。',
     '',
     `原提示词：${originalPrompt}`
   ].join('\n');
@@ -608,7 +625,11 @@ function normalizePromptPolishOptions(value) {
   if (Array.isArray(value)) {
     list = value;
   } else if (isRecord(value)) {
-    if (Array.isArray(value.prompts)) list = value.prompts;
+    const fixedPrompts = [value.prompt1, value.prompt2, value.prompt3]
+      .map((item) => stringValue(item))
+      .filter((item) => trimmedStringValue(item));
+    if (fixedPrompts.length > 0) list = fixedPrompts;
+    else if (Array.isArray(value.prompts)) list = value.prompts;
     else if (Array.isArray(value.options)) list = value.options;
     else if (Array.isArray(value.results)) list = value.results;
   }
@@ -747,6 +768,17 @@ function applyPromptPolishOption(prompt) {
   el.prompt.focus();
 }
 
+async function copyPromptPolishOption(prompt) {
+  const content = trimmedStringValue(prompt);
+  if (!content) return;
+  try {
+    await writeClipboardText(content);
+    showToast('已复制润色结果', 'success');
+  } catch {
+    showToast('复制失败，请手动复制内容', 'error');
+  }
+}
+
 function renderPromptPolishModal() {
   el.promptPolishOptions.innerHTML = '';
   el.promptPolishRetryButton.disabled = state.promptPolishing;
@@ -781,10 +813,8 @@ function renderPromptPolishModal() {
   }
 
   state.promptPolishOptions.forEach((prompt, index) => {
-    const button = document.createElement('button');
-    button.type = 'button';
-    button.className = 'prompt-polish-option';
-    button.addEventListener('click', () => applyPromptPolishOption(prompt));
+    const card = document.createElement('div');
+    card.className = 'prompt-polish-option';
 
     const title = document.createElement('span');
     title.className = 'prompt-polish-option-title';
@@ -792,8 +822,21 @@ function renderPromptPolishModal() {
     const body = document.createElement('span');
     body.className = 'prompt-polish-option-body';
     body.textContent = prompt;
-    button.append(title, body);
-    el.promptPolishOptions.appendChild(button);
+    const actions = document.createElement('div');
+    actions.className = 'prompt-polish-option-actions';
+    const copyButton = document.createElement('button');
+    copyButton.type = 'button';
+    copyButton.className = 'btn btn-sm';
+    copyButton.textContent = '复制';
+    copyButton.addEventListener('click', () => copyPromptPolishOption(prompt));
+    const selectButton = document.createElement('button');
+    selectButton.type = 'button';
+    selectButton.className = 'btn btn-sm btn-primary';
+    selectButton.textContent = '选这个';
+    selectButton.addEventListener('click', () => applyPromptPolishOption(prompt));
+    actions.append(copyButton, selectButton);
+    card.append(title, body, actions);
+    el.promptPolishOptions.appendChild(card);
   });
 }
 

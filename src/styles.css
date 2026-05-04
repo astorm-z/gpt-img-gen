@@ -1147,7 +1147,8 @@ details.config-details > summary p {
   width: 100%;
   min-width: 0;
   display: grid;
-  gap: 7px;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  gap: 10px;
   border: 1px solid var(--line-strong);
   border-radius: var(--radius);
   background: var(--panel-soft);
@@ -1155,19 +1156,13 @@ details.config-details > summary p {
   padding: 12px;
   text-align: left;
   box-shadow: none;
-  transition: border-color 0.2s ease, background 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
+  transition: border-color 0.2s ease, background 0.2s ease, box-shadow 0.2s ease;
 }
 
-.prompt-polish-option:hover,
-.prompt-polish-option:focus-visible {
-  outline: none;
+.prompt-polish-option:hover {
   border-color: var(--primary);
   background: #fff;
-  box-shadow: var(--focus);
-}
-
-.prompt-polish-option:active {
-  transform: scale(0.99);
+  box-shadow: var(--shadow);
 }
 
 .prompt-polish-option-title {
@@ -1183,6 +1178,16 @@ details.config-details > summary p {
   line-height: 1.6;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
+}
+
+.prompt-polish-option-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.prompt-polish-option-actions .btn {
+  width: 100%;
 }
 
 .prompt-polish-state {
