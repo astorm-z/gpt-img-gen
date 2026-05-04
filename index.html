@@ -79,7 +79,10 @@
           </div>
         </div>
         <div class="field">
-          <label for="prompt">提示词</label>
+          <div class="field-label-row">
+            <label for="prompt">提示词</label>
+            <button class="btn btn-sm" id="promptPolishButton" type="button">一键润色</button>
+          </div>
           <textarea class="textarea" id="prompt" rows="4" placeholder="例如：高级产品摄影风格的玻璃香水瓶，浅灰背景。"></textarea>
           <div class="prompt-toolbar">
             <div class="prompt-actions">
@@ -284,6 +287,23 @@
 </div>
 
 <div class="help-tooltip hidden" id="helpTooltip" role="tooltip"></div>
+
+<div class="prompt-polish-modal" id="promptPolishModal" aria-modal="true" role="dialog" aria-labelledby="promptPolishTitle">
+  <div class="prompt-polish-dialog">
+    <div class="prompt-polish-header">
+      <div>
+        <h2 id="promptPolishTitle">选择润色结果</h2>
+        <p id="promptPolishStatus">选择一个结果后会填充到提示词输入框。</p>
+      </div>
+      <button class="prompt-polish-close" id="promptPolishCloseButton" type="button" aria-label="关闭润色结果">×</button>
+    </div>
+    <div class="prompt-polish-options" id="promptPolishOptions"></div>
+    <div class="prompt-polish-actions">
+      <button class="btn btn-sm btn-primary" id="promptPolishRetryButton" type="button">重新生成</button>
+      <button class="btn btn-sm" id="promptPolishCancelButton" type="button">取消</button>
+    </div>
+  </div>
+</div>
 
 <div class="preview-modal" id="previewModal" aria-modal="true" role="dialog">
   <div class="preview-title" id="previewTitle"></div>

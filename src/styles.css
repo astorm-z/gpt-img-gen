@@ -1055,6 +1055,166 @@ details.config-details > summary p {
   font-weight: 800;
 }
 
+.prompt-polish-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 95;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 18px;
+  background: rgba(15, 23, 42, 0.52);
+}
+
+.prompt-polish-modal.visible {
+  display: flex;
+}
+
+.prompt-polish-dialog {
+  width: min(1080px, calc(100vw - 24px));
+  max-height: min(760px, calc(100dvh - 32px));
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  gap: 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: #fff;
+  box-shadow: 0 24px 80px rgba(15, 23, 42, 0.24);
+  padding: 14px;
+}
+
+.prompt-polish-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.prompt-polish-header > div {
+  min-width: 0;
+}
+
+.prompt-polish-header h2 {
+  margin: 0;
+  color: var(--text);
+  font-size: 17px;
+  line-height: 1.35;
+}
+
+.prompt-polish-header p {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.prompt-polish-close {
+  flex: 0 0 auto;
+  width: 34px;
+  height: 34px;
+  min-height: 0;
+  padding: 0;
+  border: 1px solid var(--line-strong);
+  border-radius: 50%;
+  background: #fff;
+  color: #475569;
+  font-size: 20px;
+  line-height: 1;
+}
+
+.prompt-polish-close:hover,
+.prompt-polish-close:focus-visible {
+  outline: none;
+  border-color: var(--primary);
+  color: var(--primary-deep);
+  box-shadow: var(--focus);
+}
+
+.prompt-polish-options {
+  min-height: 0;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  align-items: stretch;
+  gap: 10px;
+  overflow: auto;
+  padding-right: 2px;
+  scrollbar-width: thin;
+  scrollbar-color: #cbd5e1 transparent;
+}
+
+.prompt-polish-option {
+  width: 100%;
+  min-width: 0;
+  display: grid;
+  gap: 7px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  background: var(--panel-soft);
+  color: var(--text);
+  padding: 12px;
+  text-align: left;
+  box-shadow: none;
+  transition: border-color 0.2s ease, background 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
+}
+
+.prompt-polish-option:hover,
+.prompt-polish-option:focus-visible {
+  outline: none;
+  border-color: var(--primary);
+  background: #fff;
+  box-shadow: var(--focus);
+}
+
+.prompt-polish-option:active {
+  transform: scale(0.99);
+}
+
+.prompt-polish-option-title {
+  color: var(--primary-deep);
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.35;
+}
+
+.prompt-polish-option-body {
+  color: #1f2937;
+  font-size: 14px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.prompt-polish-state {
+  grid-column: 1 / -1;
+  min-height: 180px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--radius);
+  background: var(--panel-soft);
+  color: var(--muted);
+  padding: 20px;
+  text-align: center;
+  font-size: 13px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.prompt-polish-error {
+  color: var(--danger);
+  background: var(--danger-soft);
+  border-color: #fecaca;
+}
+
+.prompt-polish-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
 .preview-modal {
   position: fixed;
   inset: 0;
@@ -1324,5 +1484,23 @@ body.mask-scroll-lock {
 
   .submit-section #submitButton {
     grid-column: 1 / -1;
+  }
+
+  .prompt-polish-dialog {
+    max-height: calc(100dvh - 24px);
+    padding: 12px;
+  }
+
+  .prompt-polish-options {
+    grid-template-columns: 1fr;
+  }
+
+  .prompt-polish-actions {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .prompt-polish-actions .btn {
+    width: 100%;
   }
 }

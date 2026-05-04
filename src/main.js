@@ -27,6 +27,7 @@ const DEFAULT_MASK_CANVAS_HEIGHT = 1024;
 const MAX_UNDO_STACK_SIZE = 20;
 const MODEL_LIST_CACHE_TTL_MS = 60 * 60 * 1000;
 const FIXED_PARTIAL_IMAGES = 0;
+const PROMPT_POLISH_RESULT_COUNT = 3;
 const SUPPORTED_IMAGE_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp']);
 const INPUT_FIDELITY_UNSUPPORTED_IMAGE_MODELS = new Set(['gpt-image-2', 'gpt-image-1-mini']);
 const REASONING_EFFORT_VALUES = ['none', 'low', 'medium', 'high', 'xhigh'];
@@ -51,6 +52,7 @@ const el = {
   responseModel: document.getElementById('responseModel'),
   imageModel: document.getElementById('imageModel'),
   prompt: document.getElementById('prompt'),
+  promptPolishButton: document.getElementById('promptPolishButton'),
   clearPromptButton: document.getElementById('clearPromptButton'),
   promptCount: document.getElementById('promptCount'),
   promptHint: document.getElementById('promptHint'),
@@ -99,6 +101,12 @@ const el = {
   previewZoomOutButton: document.getElementById('previewZoomOutButton'),
   previewZoomResetButton: document.getElementById('previewZoomResetButton'),
   previewZoomInButton: document.getElementById('previewZoomInButton'),
+  promptPolishModal: document.getElementById('promptPolishModal'),
+  promptPolishStatus: document.getElementById('promptPolishStatus'),
+  promptPolishOptions: document.getElementById('promptPolishOptions'),
+  promptPolishRetryButton: document.getElementById('promptPolishRetryButton'),
+  promptPolishCancelButton: document.getElementById('promptPolishCancelButton'),
+  promptPolishCloseButton: document.getElementById('promptPolishCloseButton'),
   tooltipTriggers: Array.from(document.querySelectorAll('[data-tooltip]')),
   helpTooltip: document.getElementById('helpTooltip'),
   toastHost: document.getElementById('toastHost')
@@ -138,6 +146,12 @@ const state = {
   previewTransformOrigin: '50% 50%',
   previewOffset: { x: 0, y: 0 },
   previewDrag: null,
+  promptPolishing: false,
+  promptPolishModalOpen: false,
+  promptPolishOptions: [],
+  promptPolishError: '',
+  promptPolishAbortController: null,
+  promptPolishRequestId: 0,
   activeTooltipTrigger: null
 };
 
@@ -152,6 +166,7 @@ async function init() {
   updateModeUI();
   updateSizeUI();
   updatePromptMeta();
+  updatePromptPolishButton();
   updateRunSummary();
   renderSourceImages();
   renderResults();
@@ -184,6 +199,7 @@ function bindEvents() {
     updatePromptMeta();
     markRestoredDirty();
   });
+  el.promptPolishButton.addEventListener('click', startPromptPolish);
   el.clearPromptButton.addEventListener('click', clearPrompt);
   el.sourceFileInput.addEventListener('change', handleSourceImagesChange);
   el.sourcePanel.addEventListener('dragover', handleSourceDragOver);
@@ -256,6 +272,12 @@ function bindEvents() {
   el.previewZoomOutButton.addEventListener('click', () => nudgePreviewZoom(1 / 1.25));
   el.previewZoomResetButton.addEventListener('click', resetPreviewZoom);
   el.previewZoomInButton.addEventListener('click', () => nudgePreviewZoom(1.25));
+  el.promptPolishCloseButton.addEventListener('click', closePromptPolishModal);
+  el.promptPolishCancelButton.addEventListener('click', closePromptPolishModal);
+  el.promptPolishRetryButton.addEventListener('click', startPromptPolish);
+  el.promptPolishModal.addEventListener('click', (event) => {
+    if (event.target === el.promptPolishModal) closePromptPolishModal();
+  });
   el.tooltipTriggers.forEach((trigger) => {
     trigger.addEventListener('pointerenter', () => showHelpTooltip(trigger));
     trigger.addEventListener('pointerleave', () => {
@@ -270,6 +292,7 @@ function bindEvents() {
   window.addEventListener('scroll', updateActiveHelpTooltip, true);
   window.addEventListener('resize', updateActiveHelpTooltip);
   window.addEventListener('beforeunload', () => {
+    cancelPromptPolishRequest();
     clearLocalPreviews(state.sourceImages);
     if (state.maskPreviewObjectUrl) URL.revokeObjectURL(state.maskPreviewObjectUrl);
   });
@@ -460,6 +483,323 @@ function clearPrompt() {
   updatePromptMeta();
   markRestoredDirty();
   el.prompt.focus();
+}
+
+async function startPromptPolish() {
+  if (state.promptPolishing) return;
+  const validationError = validatePromptPolishForm();
+  if (validationError) {
+    showToast(validationError, 'warning', 6000);
+    return;
+  }
+
+  const requestId = ++state.promptPolishRequestId;
+  state.promptPolishing = true;
+  state.promptPolishAbortController = new AbortController();
+  state.promptPolishOptions = [];
+  state.promptPolishError = '';
+  openPromptPolishModal();
+  updatePromptPolishButton();
+  renderPromptPolishModal();
+
+  try {
+    const request = buildPromptPolishRequestInit();
+    const response = await fetch(buildApiUrl('/responses'), {
+      ...request,
+      signal: state.promptPolishAbortController.signal
+    });
+    const responseText = await response.text();
+    if (!response.ok) {
+      throw new Error(extractImagesErrorMessage(responseText, response.status));
+    }
+
+    const payload = parseJsonPayload(responseText, '润色请求失败：接口没有返回有效 JSON。');
+    const options = extractPromptPolishOptions(payload);
+    if (options.length < PROMPT_POLISH_RESULT_COUNT) {
+      throw new Error('润色请求已返回，但没有拿到 3 份有效提示词。');
+    }
+
+    if (requestId !== state.promptPolishRequestId) return;
+    state.promptPolishOptions = options;
+    showToast('已生成 3 份润色结果', 'success');
+  } catch (error) {
+    if (requestId !== state.promptPolishRequestId) return;
+    if (error instanceof DOMException && error.name === 'AbortError') return;
+    const message = extractErrorMessage(error, '提示词润色失败');
+    state.promptPolishError = message;
+    showToast(message, 'error', 7000);
+  } finally {
+    if (requestId === state.promptPolishRequestId) {
+      state.promptPolishing = false;
+      state.promptPolishAbortController = null;
+      updatePromptPolishButton();
+      renderPromptPolishModal();
+    }
+  }
+}
+
+function validatePromptPolishForm() {
+  if (state.submitting) return '图片生成请求进行中，请稍后再润色提示词。';
+  if (!getApiBaseUrl()) return '请填写 API URL。';
+  if (!getApiKey()) return '请填写 API Key。';
+  if (state.loadingModels) return '正在加载模型，请稍后再试。';
+  if (!trimmedStringValue(el.responseModel.value)) return '请选择或输入 Responses 模型。';
+  if (!trimmedStringValue(el.prompt.value)) return '请输入提示词后再润色。';
+  return '';
+}
+
+function buildPromptPolishRequestInit() {
+  return {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${getApiKey()}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify(buildPromptPolishPayload())
+  };
+}
+
+function buildPromptPolishPayload() {
+  return {
+    model: trimmedStringValue(el.responseModel.value) || DEFAULT_RESPONSE_MODEL,
+    input: [
+      {
+        role: 'user',
+        content: [
+          {
+            type: 'input_text',
+            text: buildPromptPolishInstruction(trimmedStringValue(el.prompt.value))
+          }
+        ]
+      }
+    ],
+    store: false,
+    stream: false
+  };
+}
+
+function buildPromptPolishInstruction(originalPrompt) {
+  return [
+    '你是专业的 AI 生图提示词编辑器。',
+    '请在不改变用户原始主体、核心意图、画幅要求和显式限制的前提下，润色并扩展下面的提示词。',
+    `输出 ${PROMPT_POLISH_RESULT_COUNT} 份互不相同、可直接用于生图的完整提示词。`,
+    '语言必须保留原提示词的主要语言；如果原提示词主要是中文，全部用中文；如果主要是英文，全部用英文。',
+    '三份结果分别偏向：1. 视觉细节与材质；2. 构图、镜头和光线；3. 风格、氛围和审美。',
+    '不要解释，不要 Markdown，不要代码块。只返回 JSON，结构必须是 {"prompts":["...","...","..."]}。',
+    '',
+    `原提示词：${originalPrompt}`
+  ].join('\n');
+}
+
+function extractPromptPolishOptions(payload) {
+  const direct = normalizePromptPolishOptions(payload);
+  if (direct.length >= PROMPT_POLISH_RESULT_COUNT) return direct;
+
+  const responseText = extractResponsesText(payload);
+  const parsed = parsePromptPolishJson(responseText);
+  const parsedOptions = normalizePromptPolishOptions(parsed);
+  if (parsedOptions.length >= PROMPT_POLISH_RESULT_COUNT) return parsedOptions;
+
+  return normalizePromptPolishOptions(parsePromptPolishLines(responseText));
+}
+
+function normalizePromptPolishOptions(value) {
+  let list = [];
+  if (Array.isArray(value)) {
+    list = value;
+  } else if (isRecord(value)) {
+    if (Array.isArray(value.prompts)) list = value.prompts;
+    else if (Array.isArray(value.options)) list = value.options;
+    else if (Array.isArray(value.results)) list = value.results;
+  }
+
+  const seen = new Set();
+  const options = [];
+  for (const item of list) {
+    const text = normalizePromptPolishOptionText(item);
+    if (!text) continue;
+    const key = text.replace(/\s+/g, ' ').toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    options.push(text);
+    if (options.length >= PROMPT_POLISH_RESULT_COUNT) break;
+  }
+  return options;
+}
+
+function normalizePromptPolishOptionText(value) {
+  const text = isRecord(value)
+    ? stringValue(value.prompt) || stringValue(value.text) || stringValue(value.content)
+    : stringValue(value);
+  return trimmedStringValue(text)
+    .replace(/^\s*(?:方案\s*)?\d+[.、:：]\s*/, '')
+    .trim();
+}
+
+function extractResponsesText(payload) {
+  const direct = trimmedStringValue(payload?.output_text);
+  if (direct) return direct;
+
+  const parts = [];
+  const output = Array.isArray(payload?.output) ? payload.output : [];
+  for (const item of output) {
+    if (!isRecord(item)) continue;
+    const itemText = trimmedStringValue(item.text);
+    if (itemText) parts.push(itemText);
+    const content = Array.isArray(item.content) ? item.content : [];
+    for (const contentItem of content) {
+      if (!isRecord(contentItem)) continue;
+      const text = trimmedStringValue(contentItem.text) ||
+        trimmedStringValue(contentItem.output_text) ||
+        trimmedStringValue(contentItem.content);
+      if (text) parts.push(text);
+    }
+  }
+
+  const choices = Array.isArray(payload?.choices) ? payload.choices : [];
+  for (const choice of choices) {
+    if (!isRecord(choice)) continue;
+    const text = trimmedStringValue(choice.text) || trimmedStringValue(choice.message?.content);
+    if (text) parts.push(text);
+  }
+  return parts.join('\n').trim();
+}
+
+function parsePromptPolishJson(text) {
+  const normalized = stripJsonCodeFence(text);
+  if (!normalized) return null;
+  const parsed = tryParseJson(normalized);
+  if (parsed) return parsed;
+
+  const objectStart = normalized.indexOf('{');
+  const objectEnd = normalized.lastIndexOf('}');
+  if (objectStart >= 0 && objectEnd > objectStart) {
+    const objectParsed = tryParseJson(normalized.slice(objectStart, objectEnd + 1));
+    if (objectParsed) return objectParsed;
+  }
+
+  const arrayStart = normalized.indexOf('[');
+  const arrayEnd = normalized.lastIndexOf(']');
+  if (arrayStart >= 0 && arrayEnd > arrayStart) {
+    const arrayParsed = tryParseJson(normalized.slice(arrayStart, arrayEnd + 1));
+    if (arrayParsed) return arrayParsed;
+  }
+  return null;
+}
+
+function stripJsonCodeFence(text) {
+  const normalized = trimmedStringValue(text);
+  const match = normalized.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i);
+  return match ? match[1].trim() : normalized;
+}
+
+function parsePromptPolishLines(text) {
+  return trimmedStringValue(text)
+    .split(/\n+/)
+    .map((line) => line.replace(/^\s*(?:[-*]|\d+[.、:：])\s*/, '').trim())
+    .filter(Boolean);
+}
+
+function parseJsonPayload(text, errorMessage) {
+  try {
+    return trimmedStringValue(text) ? JSON.parse(text) : {};
+  } catch {
+    throw new Error(errorMessage);
+  }
+}
+
+function tryParseJson(text) {
+  try {
+    return JSON.parse(text);
+  } catch {
+    return null;
+  }
+}
+
+function openPromptPolishModal() {
+  state.promptPolishModalOpen = true;
+  el.promptPolishModal.classList.add('visible');
+}
+
+function closePromptPolishModal() {
+  cancelPromptPolishRequest();
+  state.promptPolishModalOpen = false;
+  el.promptPolishModal.classList.remove('visible');
+  el.promptPolishButton.focus();
+}
+
+function cancelPromptPolishRequest() {
+  if (!state.promptPolishAbortController) return;
+  state.promptPolishRequestId += 1;
+  state.promptPolishAbortController.abort();
+  state.promptPolishAbortController = null;
+  state.promptPolishing = false;
+  updatePromptPolishButton();
+}
+
+function applyPromptPolishOption(prompt) {
+  const nextPrompt = trimmedStringValue(prompt);
+  if (!nextPrompt) return;
+  el.prompt.value = nextPrompt;
+  updatePromptMeta();
+  markRestoredDirty();
+  closePromptPolishModal();
+  el.prompt.focus();
+}
+
+function renderPromptPolishModal() {
+  el.promptPolishOptions.innerHTML = '';
+  el.promptPolishRetryButton.disabled = state.promptPolishing;
+  el.promptPolishRetryButton.textContent = state.promptPolishing ? '生成中...' : '重新生成';
+  el.promptPolishCancelButton.textContent = state.promptPolishing ? '取消请求' : '取消';
+
+  if (state.promptPolishing) {
+    el.promptPolishStatus.textContent = 'AI 正在生成 3 份不同方向的润色结果。';
+    const loading = document.createElement('div');
+    loading.className = 'prompt-polish-state';
+    loading.textContent = '润色中，请稍候...';
+    el.promptPolishOptions.appendChild(loading);
+    return;
+  }
+
+  if (state.promptPolishError) {
+    el.promptPolishStatus.textContent = '润色失败，可以重新生成。';
+    const error = document.createElement('div');
+    error.className = 'prompt-polish-state prompt-polish-error';
+    error.textContent = state.promptPolishError;
+    el.promptPolishOptions.appendChild(error);
+    return;
+  }
+
+  el.promptPolishStatus.textContent = '选择一个结果后会填充到提示词输入框。';
+  if (state.promptPolishOptions.length === 0) {
+    const empty = document.createElement('div');
+    empty.className = 'prompt-polish-state';
+    empty.textContent = '暂无润色结果';
+    el.promptPolishOptions.appendChild(empty);
+    return;
+  }
+
+  state.promptPolishOptions.forEach((prompt, index) => {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'prompt-polish-option';
+    button.addEventListener('click', () => applyPromptPolishOption(prompt));
+
+    const title = document.createElement('span');
+    title.className = 'prompt-polish-option-title';
+    title.textContent = `方案 ${index + 1}`;
+    const body = document.createElement('span');
+    body.className = 'prompt-polish-option-body';
+    body.textContent = prompt;
+    button.append(title, body);
+    el.promptPolishOptions.appendChild(button);
+  });
+}
+
+function updatePromptPolishButton() {
+  el.promptPolishButton.disabled = state.promptPolishing;
+  el.promptPolishButton.textContent = state.promptPolishing ? '润色中...' : '一键润色';
 }
 
 function updatePromptMeta() {
@@ -2742,6 +3082,10 @@ function handleGlobalKeydown(event) {
   if (event.key !== 'Escape') return;
   if (state.activeTooltipTrigger) {
     hideHelpTooltip();
+    return;
+  }
+  if (state.promptPolishModalOpen) {
+    closePromptPolishModal();
     return;
   }
   if (state.previewImageUrl) {
