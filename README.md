@@ -27,6 +27,8 @@ Copy-Item app.config.example.json app.config.json
 
 `app.config.json` 是本地和部署环境的运行时配置文件，已加入 `.gitignore`，不要把真实 API Key 写进 `src/`、`index.html` 或提交到仓库。生产构建会优先复制 `app.config.json` 到 `dist/app.config.json`；如果该文件不存在，则复制空值示例配置。
 
+访问页面时追加 `?nokey=true` 会隐藏“填充默认key”和“获取专属key”入口，并且不会自动填入配置文件中的默认 API Key；API URL 仍会按配置默认填充，用户手动输入并保存配置的行为不变。
+
 ```bash
 npm run dev
 ```

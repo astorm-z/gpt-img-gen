@@ -28,6 +28,9 @@ const MAX_UNDO_STACK_SIZE = 20;
 const MODEL_LIST_CACHE_TTL_MS = 60 * 60 * 1000;
 const FIXED_PARTIAL_IMAGES = 0;
 const PROMPT_POLISH_RESULT_COUNT = 3;
+const PAGE_OPTIONS = {
+  noConfiguredApiKey: readBooleanSearchParam('nokey')
+};
 const SUPPORTED_IMAGE_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp']);
 const INPUT_FIDELITY_UNSUPPORTED_IMAGE_MODELS = new Set(['gpt-image-2', 'gpt-image-1-mini']);
 const REASONING_EFFORT_VALUES = ['none', 'low', 'medium', 'high', 'xhigh'];
@@ -341,10 +344,10 @@ function createDefaultRuntimeConfig() {
 function applyRuntimeConfigUI() {
   el.apiUrl.placeholder = runtimeConfig.apiUrl || '请填写 API URL';
   el.fillFreeKeyButton.textContent = runtimeConfig.apiKeyButtonText;
-  el.fillFreeKeyButton.classList.toggle('hidden', !runtimeConfig.apiKey);
+  el.fillFreeKeyButton.classList.toggle('hidden', !canUseConfiguredApiKey());
   el.freeKeyNotice.textContent = runtimeConfig.apiKeyNotice;
 
-  if (runtimeConfig.keyUrl) {
+  if (!PAGE_OPTIONS.noConfiguredApiKey && runtimeConfig.keyUrl) {
     el.getKeyLink.href = runtimeConfig.keyUrl;
     el.getKeyLink.classList.remove('hidden');
   } else {
@@ -362,8 +365,9 @@ function restoreConfig() {
   }
   const cachedApiUrl = normalizeApiBaseUrl(config?.apiUrl, runtimeConfig.apiPathPrefix);
   const cachedApiKey = firstConfigString(config?.apiKey);
+  const configuredApiKey = canUseConfiguredApiKey() ? runtimeConfig.apiKey : '';
   el.apiUrl.value = cachedApiUrl || runtimeConfig.apiUrl;
-  el.apiKey.value = cachedApiKey || runtimeConfig.apiKey;
+  el.apiKey.value = cachedApiKey || configuredApiKey;
   state.configCheckStatus = 'unconfigured';
   el.configDetails.open = !hasCompleteConfigFields();
   clearStaleModelCaches(hasCompleteConfigFields() ? getConfigSignature() : '');
@@ -395,7 +399,7 @@ function toggleApiKeyVisibility() {
 }
 
 function fillConfiguredApiKey() {
-  if (!runtimeConfig.apiKey) return;
+  if (!canUseConfiguredApiKey()) return;
   el.apiKey.value = runtimeConfig.apiKey;
   markConfigUnchecked();
   updateConfiguredKeyNotice();
@@ -403,7 +407,11 @@ function fillConfiguredApiKey() {
 }
 
 function updateConfiguredKeyNotice() {
-  el.freeKeyNotice.classList.toggle('hidden', !runtimeConfig.apiKey || getApiKey() !== runtimeConfig.apiKey);
+  el.freeKeyNotice.classList.toggle('hidden', !canUseConfiguredApiKey() || getApiKey() !== runtimeConfig.apiKey);
+}
+
+function canUseConfiguredApiKey() {
+  return !PAGE_OPTIONS.noConfiguredApiKey && Boolean(runtimeConfig.apiKey);
 }
 
 function setApiKeyBalanceNotice(visible) {
@@ -3360,6 +3368,14 @@ function normalizeExternalLink(value) {
     return url.protocol === 'http:' || url.protocol === 'https:' ? url.href : '';
   } catch {
     return '';
+  }
+}
+
+function readBooleanSearchParam(name) {
+  try {
+    return new URLSearchParams(window.location.search).get(name) === 'true';
+  } catch {
+    return false;
   }
 }
 
