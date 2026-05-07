@@ -134,6 +134,14 @@ h1 {
   min-height: 0;
 }
 
+body.no-header .topbar {
+  display: none;
+}
+
+body.no-header .shell {
+  margin-top: 20px;
+}
+
 .panel {
   background: var(--panel);
   border: 1px solid var(--line);

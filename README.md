@@ -29,6 +29,10 @@ Copy-Item app.config.example.json app.config.json
 
 访问页面时追加 `?nokey=true` 会隐藏“填充默认key”和“获取专属key”入口，并且不会自动填入配置文件中的默认 API Key；API URL 仍会按配置默认填充，用户手动输入并保存配置的行为不变。
 
+访问页面时追加 `?noheader=true` 会隐藏页面头部，并将主内容 `.shell` 的顶部外边距设为 `20px`。两个参数可以组合使用，例如 `?nokey=true&noheader=true`。
+
+访问页面时追加 `?url=https%3A%2F%2Fexample.com` 会把 API URL 固定为该地址且禁止用户更改；该值优先于本地保存配置和 `app.config.json` 默认值，保存配置时仍会保存当前固定 API URL 和用户输入的 API Key。
+
 ```bash
 npm run dev
 ```

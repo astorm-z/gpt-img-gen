@@ -29,7 +29,9 @@ const MODEL_LIST_CACHE_TTL_MS = 60 * 60 * 1000;
 const FIXED_PARTIAL_IMAGES = 0;
 const PROMPT_POLISH_RESULT_COUNT = 3;
 const PAGE_OPTIONS = {
-  noConfiguredApiKey: readBooleanSearchParam('nokey')
+  noConfiguredApiKey: readBooleanSearchParam('nokey'),
+  noHeader: readBooleanSearchParam('noheader'),
+  fixedApiUrl: readSearchParam('url')
 };
 const SUPPORTED_IMAGE_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp']);
 const INPUT_FIDELITY_UNSUPPORTED_IMAGE_MODELS = new Set(['gpt-image-2', 'gpt-image-1-mini']);
@@ -161,6 +163,7 @@ const state = {
 init();
 
 async function init() {
+  applyPageOptionsUI();
   runtimeConfig = await loadRuntimeConfig();
   applyRuntimeConfigUI();
   restoreConfig();
@@ -177,6 +180,10 @@ async function init() {
   await persistImageHistory();
   renderHistory();
   if (hasCompleteConfigFields()) loadModels();
+}
+
+function applyPageOptionsUI() {
+  document.body.classList.toggle('no-header', PAGE_OPTIONS.noHeader);
 }
 
 function bindEvents() {
@@ -342,7 +349,10 @@ function createDefaultRuntimeConfig() {
 }
 
 function applyRuntimeConfigUI() {
-  el.apiUrl.placeholder = runtimeConfig.apiUrl || '请填写 API URL';
+  const fixedApiUrl = getFixedApiBaseUrl();
+  el.apiUrl.placeholder = fixedApiUrl || runtimeConfig.apiUrl || '请填写 API URL';
+  el.apiUrl.readOnly = Boolean(fixedApiUrl);
+  el.apiUrl.setAttribute('aria-readonly', fixedApiUrl ? 'true' : 'false');
   el.fillFreeKeyButton.textContent = runtimeConfig.apiKeyButtonText;
   el.fillFreeKeyButton.classList.toggle('hidden', !canUseConfiguredApiKey());
   el.freeKeyNotice.textContent = runtimeConfig.apiKeyNotice;
@@ -366,7 +376,7 @@ function restoreConfig() {
   const cachedApiUrl = normalizeApiBaseUrl(config?.apiUrl, runtimeConfig.apiPathPrefix);
   const cachedApiKey = firstConfigString(config?.apiKey);
   const configuredApiKey = canUseConfiguredApiKey() ? runtimeConfig.apiKey : '';
-  el.apiUrl.value = cachedApiUrl || runtimeConfig.apiUrl;
+  el.apiUrl.value = getFixedApiBaseUrl() || cachedApiUrl || runtimeConfig.apiUrl;
   el.apiKey.value = cachedApiKey || configuredApiKey;
   state.configCheckStatus = 'unconfigured';
   el.configDetails.open = !hasCompleteConfigFields();
@@ -431,7 +441,11 @@ function getConfigSignature() {
 }
 
 function getApiBaseUrl() {
-  return normalizeApiBaseUrl(el.apiUrl.value, runtimeConfig.apiPathPrefix);
+  return getFixedApiBaseUrl() || normalizeApiBaseUrl(el.apiUrl.value, runtimeConfig.apiPathPrefix);
+}
+
+function getFixedApiBaseUrl() {
+  return normalizeApiBaseUrl(PAGE_OPTIONS.fixedApiUrl, runtimeConfig.apiPathPrefix);
 }
 
 function buildApiUrl(path) {
@@ -3376,6 +3390,14 @@ function readBooleanSearchParam(name) {
     return new URLSearchParams(window.location.search).get(name) === 'true';
   } catch {
     return false;
+  }
+}
+
+function readSearchParam(name) {
+  try {
+    return trimmedStringValue(new URLSearchParams(window.location.search).get(name));
+  } catch {
+    return '';
   }
 }
 
