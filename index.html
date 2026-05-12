@@ -13,7 +13,7 @@
   <header class="topbar">
     <div class="title-wrap">
       <h1>AI生图</h1>
-      <p class="subtitle">面向 Responses API 的创作控制台，配置、上传、生成和历史结果集中管理。</p>
+      <p class="subtitle">面向 AI 图像创作的控制台，配置、上传、生成和历史结果集中管理。</p>
     </div>
   </header>
 
@@ -67,7 +67,7 @@
         </div>
 
         <div class="field inline">
-          <div class="field">
+          <div class="field" data-api-mode-hidden="images">
             <label for="responseModel">Responses 模型</label>
             <select class="select" id="responseModel">
               <option value="gpt-5.5">gpt-5.5</option>
@@ -200,7 +200,7 @@
                   <option value="high">高</option>
                 </select>
               </div>
-              <div class="field">
+              <div class="field" data-api-mode-hidden="images">
                 <div class="field-label-row label-help-row">
                   <label for="reasoningEffort">思考深度</label>
                   <button
@@ -249,7 +249,7 @@
 
       <div class="section submit-section">
         <div class="submit-bar">
-          <div class="submit-summary truncate" id="submitSummary">准备生成：文生图 · 1024x1024 · PNG</div>
+          <div class="submit-summary truncate" id="submitSummary">准备生成：Responses API · 文生图 · 1024x1024 · PNG</div>
           <div class="action-row">
             <button class="btn" id="clearHistoryButton" type="button">清空历史记录</button>
             <button class="btn" id="resetButton" type="button">重置表单</button>

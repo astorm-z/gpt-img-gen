@@ -8,6 +8,7 @@ const HISTORY_DB_NAME = 'gpt-image-gen2-image-generation';
 const HISTORY_DB_VERSION = 1;
 const HISTORY_DB_STORE = 'history';
 const HISTORY_LIMIT = 10;
+const DEFAULT_API_MODE = 'responses';
 const DEFAULT_RESPONSE_MODEL = 'gpt-5.5';
 const DEFAULT_IMAGE_MODEL = 'gpt-image-2';
 const DEFAULT_SIZE = '1024x1024';
@@ -31,7 +32,8 @@ const PROMPT_POLISH_RESULT_COUNT = 3;
 const PAGE_OPTIONS = {
   noConfiguredApiKey: readBooleanSearchParam('nokey'),
   noHeader: readBooleanSearchParam('noheader'),
-  fixedApiUrl: readSearchParam('url')
+  fixedApiUrl: readSearchParam('url'),
+  apiMode: readSearchParam('type') === 'image' ? 'images' : DEFAULT_API_MODE
 };
 const SUPPORTED_IMAGE_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp']);
 const INPUT_FIDELITY_UNSUPPORTED_IMAGE_MODELS = new Set(['gpt-image-2', 'gpt-image-1-mini']);
@@ -54,6 +56,7 @@ const el = {
   toggleKeyButton: document.getElementById('toggleKeyButton'),
   saveConfigButton: document.getElementById('saveConfigButton'),
   modeButtons: Array.from(document.querySelectorAll('[data-mode]')),
+  apiModeHidden: Array.from(document.querySelectorAll('[data-api-mode-hidden]')),
   responseModel: document.getElementById('responseModel'),
   imageModel: document.getElementById('imageModel'),
   prompt: document.getElementById('prompt'),
@@ -119,6 +122,7 @@ const el = {
 
 const state = {
   mode: 'generate',
+  apiMode: PAGE_OPTIONS.apiMode,
   responseModelOptions: [],
   sourceImages: [],
   resultImages: [],
@@ -168,6 +172,7 @@ async function init() {
   applyRuntimeConfigUI();
   restoreConfig();
   restoreAdvancedSettings();
+  updateApiModeUI();
   bindEvents();
   updateModeUI();
   updateSizeUI();
@@ -386,6 +391,10 @@ function restoreConfig() {
   updateConfigSummary();
 }
 
+function getApiModeLabel() {
+  return state.apiMode === 'images' ? 'Images API' : 'Responses API';
+}
+
 function saveConfig(options = {}) {
   const shouldLoadModels = options.loadModelsAfterSave !== false;
   const config = {
@@ -496,6 +505,22 @@ function resetModelSelectsToDefaults() {
   state.modelOptionsConfigSignature = '';
   fillModelSelect(el.responseModel, [{ value: DEFAULT_RESPONSE_MODEL, label: DEFAULT_RESPONSE_MODEL }]);
   el.imageModel.value = DEFAULT_IMAGE_MODEL;
+  updateRunSummary();
+}
+
+function normalizeApiMode(value) {
+  return trimmedStringValue(value) === 'images' ? 'images' : DEFAULT_API_MODE;
+}
+
+function updateApiModeUI() {
+  el.apiModeHidden.forEach((node) => {
+    const hiddenModes = trimmedStringValue(node.dataset.apiModeHidden).split(/\s+/).filter(Boolean);
+    node.classList.toggle('hidden', hiddenModes.includes(state.apiMode));
+  });
+  el.imageModel.value = DEFAULT_IMAGE_MODEL;
+  el.imageModel.readOnly = true;
+  el.imageModel.setAttribute('aria-readonly', 'true');
+  document.body.dataset.apiMode = state.apiMode;
   updateRunSummary();
 }
 
@@ -876,11 +901,12 @@ function updatePromptMeta() {
 
 function updateRunSummary() {
   const modeLabel = state.mode === 'generate' ? '文生图' : state.mode === 'mask' ? '遮罩改图' : '图生图';
+  const apiModeLabel = getApiModeLabel();
   const size = getCurrentSizeDisplay();
   const format = resolveOutputFormatValue().toUpperCase();
   const quality = el.quality.value ? `质量 ${el.quality.value}` : '默认质量';
   const sourcePart = state.mode === 'generate' ? '' : ` · ${state.sourceImages.length} 张源图`;
-  const summary = `${modeLabel} · ${size} · ${format} · ${quality}${sourcePart}`;
+  const summary = `${apiModeLabel} · ${modeLabel} · ${size} · ${format} · ${quality}${sourcePart}`;
   el.submitSummary.textContent = state.submitting ? `正在生成：${summary}` : `准备生成：${summary}`;
 }
 
@@ -994,7 +1020,9 @@ function fillModelSelect(select, options) {
 
 function applyLoadedModelOptions(allModels, configSignature, fromCache) {
   const responseModels = allModels.filter((option) => !isImageGenerationModelId(option.value));
-  state.responseModelOptions = responseModels.length > 0 ? responseModels : allModels;
+  state.responseModelOptions = responseModels.length > 0
+    ? responseModels
+    : [{ value: DEFAULT_RESPONSE_MODEL, label: DEFAULT_RESPONSE_MODEL }];
   state.modelOptionsConfigSignature = configSignature;
   fillModelSelect(el.responseModel, state.responseModelOptions);
   el.imageModel.value = DEFAULT_IMAGE_MODEL;
@@ -1439,6 +1467,7 @@ function renderSourceImages() {
 
 function resetForm() {
   state.mode = 'generate';
+  state.apiMode = PAGE_OPTIONS.apiMode;
   el.prompt.value = '';
   setModelControlValue('response', DEFAULT_RESPONSE_MODEL);
   el.imageModel.value = DEFAULT_IMAGE_MODEL;
@@ -1456,6 +1485,7 @@ function resetForm() {
   state.sourceImages = [];
   resetMaskEditor();
   exitMaskEditorFullscreen();
+  updateApiModeUI();
   updateModeUI();
   updateSizeUI();
   updatePromptMeta();
@@ -1486,9 +1516,11 @@ async function submitGeneration() {
   updateSubmitButton();
 
   try {
-    const request = await buildRequestInit();
-    const response = await fetch(buildApiUrl('/responses'), {
-      ...request,
+    const request = await buildGenerationRequest();
+    const response = await fetch(request.url, {
+      method: request.method,
+      headers: request.headers,
+      body: request.body,
       signal: state.abortController.signal
     });
 
@@ -1497,11 +1529,9 @@ async function submitGeneration() {
       throw new Error(extractImagesErrorMessage(responseText, response.status));
     }
 
-    if (!isEventStreamResponse(response)) {
-      throw new Error('生图页面只支持流式 Responses 响应。');
-    }
-
-    const images = await consumeImageGenerationStream(response);
+    const images = isEventStreamResponse(response)
+      ? await consumeImageGenerationStream(response)
+      : await consumeImageGenerationJsonResponse(response);
     if (images.length === 0) {
       throw new Error('接口已返回成功，但没有拿到可展示的图片数据。');
     }
@@ -1565,7 +1595,7 @@ function validateGenerationForm() {
   if (!getApiBaseUrl()) return '请填写 API URL。';
   if (!getApiKey()) return '请填写 API Key。';
   if (state.loadingModels) return '正在加载模型，请稍后再试。';
-  if (!trimmedStringValue(el.responseModel.value)) return '请选择或输入 Responses 模型。';
+  if (state.apiMode === 'responses' && !trimmedStringValue(el.responseModel.value)) return '请选择或输入 Responses 模型。';
   if (!trimmedStringValue(el.prompt.value)) return '请输入提示词。';
   if (state.mode !== 'generate' && state.sourceImages.length === 0) {
     return state.mode === 'mask' ? '遮罩编辑模式需要上传一张原始图片。' : '图生图模式至少需要上传一张源图。';
@@ -1582,6 +1612,11 @@ function validateGenerationForm() {
     }
   }
   return '';
+}
+
+async function buildGenerationRequest() {
+  if (state.apiMode === 'images') return buildImagesApiRequest();
+  return buildResponsesApiRequest();
 }
 
 function validateCustomSize() {
@@ -1601,8 +1636,9 @@ function validateCustomSize() {
   return '';
 }
 
-async function buildRequestInit() {
+async function buildResponsesApiRequest() {
   return {
+    url: buildApiUrl('/responses'),
     method: 'POST',
     headers: {
       Authorization: `Bearer ${getApiKey()}`,
@@ -1612,12 +1648,100 @@ async function buildRequestInit() {
   };
 }
 
+async function buildImagesApiRequest() {
+  if (state.mode === 'generate') {
+    return {
+      url: buildApiUrl('/images/generations'),
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${getApiKey()}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(buildImagesGenerationPayload())
+    };
+  }
+
+  return {
+    url: buildApiUrl('/images/edits'),
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${getApiKey()}`
+    },
+    body: await buildImagesEditFormData()
+  };
+}
+
+function buildImagesGenerationPayload() {
+  return appendImagesPayloadOptions({
+    model: resolveImageModelValue(),
+    prompt: trimmedStringValue(el.prompt.value),
+    size: resolveSizeValue(),
+    stream: true,
+    partial_images: FIXED_PARTIAL_IMAGES
+  });
+}
+
+async function buildImagesEditFormData() {
+  const formData = new FormData();
+  const imagesToSubmit = state.mode === 'mask'
+    ? state.sourceImages.slice(0, 1)
+    : state.sourceImages;
+
+  formData.append('model', resolveImageModelValue());
+  formData.append('prompt', trimmedStringValue(el.prompt.value));
+  formData.append('size', resolveSizeValue());
+  formData.append('stream', 'true');
+  formData.append('partial_images', String(FIXED_PARTIAL_IMAGES));
+
+  const imageFieldName = imagesToSubmit.length > 1 ? 'image[]' : 'image';
+  for (const item of imagesToSubmit) {
+    formData.append(imageFieldName, item.file, item.file.name || 'image.png');
+  }
+
+  if (state.mode === 'mask') {
+    const maskBlob = await exportMaskBlob();
+    formData.append('mask', maskBlob, 'mask.png');
+  }
+
+  appendImagesFormDataOptions(formData);
+  return formData;
+}
+
+function appendImagesPayloadOptions(payload) {
+  const quality = resolveImagesQualityValue();
+  const outputFormat = resolveOutputFormatValue();
+  const compression = resolveOutputCompressionForFormat(outputFormat);
+  if (quality) payload.quality = quality;
+  if (outputFormat) payload.output_format = outputFormat;
+  if (compression !== null) payload.output_compression = compression;
+  payload.moderation = 'low';
+  return payload;
+}
+
+function appendImagesFormDataOptions(formData) {
+  const quality = resolveImagesQualityValue();
+  const outputFormat = resolveOutputFormatValue();
+  const compression = resolveOutputCompressionForFormat(outputFormat);
+  if (quality) formData.append('quality', quality);
+  if (outputFormat) formData.append('output_format', outputFormat);
+  if (compression !== null) formData.append('output_compression', String(compression));
+  formData.append('moderation', 'low');
+
+  if (!isInputFidelityUnsupportedImageModel()) {
+    formData.append('input_fidelity', DEFAULT_INPUT_FIDELITY);
+  }
+}
+
+function resolveImagesQualityValue() {
+  return trimmedStringValue(el.quality.value) || 'auto';
+}
+
 async function buildResponsesPayload() {
   const outputFormat = resolveOutputFormatValue();
   const reasoningEffort = resolveReasoningEffortValue();
   const tool = {
     type: 'image_generation',
-    model: DEFAULT_IMAGE_MODEL,
+    model: resolveImageModelValue(),
     action: state.mode === 'mask' ? 'edit' : 'generate',
     size: resolveSizeValue(),
     quality: el.quality.value || 'auto',
@@ -1682,8 +1806,24 @@ function isSupportedImageFile(file) {
   return SUPPORTED_IMAGE_TYPES.has(file.type);
 }
 
+async function consumeImageGenerationJsonResponse(response) {
+  const responseText = await response.text();
+  const payload = parseJsonPayload(responseText, '生图请求失败：接口没有返回有效 JSON。');
+  const images = extractFinalImageCandidates(payload, 'json')
+    .map((candidate, index) => createStreamResultImage(candidate, index, false))
+    .filter(Boolean);
+  if (images.length === 0) throw new Error('接口已返回成功，但没有拿到可展示的图片数据。');
+  return images;
+}
+
 function resolveOutputFormatValue() {
   return trimmedStringValue(el.outputFormat.value) || 'png';
+}
+
+function resolveOutputCompressionForFormat(format) {
+  const normalized = trimmedStringValue(format);
+  if (normalized !== 'jpeg' && normalized !== 'webp') return null;
+  return normalizeOutputCompression(el.outputCompression.value) ?? DEFAULT_OUTPUT_COMPRESSION;
 }
 
 function resolveReasoningEffortValue() {
@@ -1691,7 +1831,11 @@ function resolveReasoningEffortValue() {
 }
 
 function isInputFidelityUnsupportedImageModel() {
-  return INPUT_FIDELITY_UNSUPPORTED_IMAGE_MODELS.has(DEFAULT_IMAGE_MODEL);
+  return INPUT_FIDELITY_UNSUPPORTED_IMAGE_MODELS.has(resolveImageModelValue());
+}
+
+function resolveImageModelValue() {
+  return DEFAULT_IMAGE_MODEL;
 }
 
 function resolveSizeValue() {
@@ -1887,7 +2031,13 @@ function streamValueToFinalCandidate(value, resolvedEvent, index) {
   const effectiveType = type || resolvedEvent;
   const isToolResult = effectiveType === 'image_generation_call';
   const isLegacyCompleted = effectiveType === 'image_generation.completed' || effectiveType === 'image_edit.completed';
-  if (!isToolResult && !isLegacyCompleted) return null;
+  const isImageResultItem = hasDirectImageValue(value) && (
+    effectiveType === 'json' ||
+    effectiveType === 'image_generation.completed' ||
+    effectiveType === 'image_edit.completed' ||
+    resolvedEvent === 'json'
+  );
+  if (!isToolResult && !isLegacyCompleted && !isImageResultItem) return null;
 
   const b64 = isToolResult
     ? trimmedStringValue(value.result) || trimmedStringValue(value.b64_json)
@@ -1902,6 +2052,14 @@ function streamValueToFinalCandidate(value, resolvedEvent, index) {
     revisedPrompt: streamRevisedPromptValue(value),
     outputFormat: trimmedStringValue(value.output_format)
   };
+}
+
+function hasDirectImageValue(value) {
+  return Boolean(
+    trimmedStringValue(value.url) ||
+    trimmedStringValue(value.b64_json) ||
+    trimmedStringValue(value.result)
+  );
 }
 
 function streamRevisedPromptValue(value) {
@@ -2501,10 +2659,11 @@ function createCachedResultPayload(savedAt, results, durationMs) {
 
 function captureCurrentForm() {
   return {
+    apiMode: state.apiMode,
     mode: state.mode,
     prompt: stringValue(el.prompt.value),
     responseModel: stringValue(el.responseModel.value),
-    model: DEFAULT_IMAGE_MODEL,
+    model: resolveImageModelValue(),
     size: stringValue(el.size.value),
     customSizeWidth: stringValue(el.customSizeWidth.value),
     customSizeHeight: stringValue(el.customSizeHeight.value),
@@ -2621,6 +2780,7 @@ function toPlainHistoryEntry(entry) {
     savedAt: entry.savedAt,
     durationMs: normalizeDurationMs(entry.durationMs),
     form: {
+      apiMode: entry.form.apiMode,
       mode: entry.form.mode,
       prompt: entry.form.prompt,
       responseModel: entry.form.responseModel,
@@ -2672,6 +2832,7 @@ function normalizeCachedForm(value) {
   const storedMode = stringValue(value.mode);
   const normalizedSize = normalizeCachedSizeSettings(value);
   return {
+    apiMode: normalizeApiMode(value.apiMode),
     mode: storedMode === 'edit' || storedMode === 'mask' ? storedMode : 'generate',
     prompt: stringValue(value.prompt),
     responseModel: stringValue(value.responseModel) || DEFAULT_RESPONSE_MODEL,
@@ -2859,6 +3020,7 @@ function restoreHistoryEntry(entry) {
   state.sourceImages = [];
   resetMaskEditor();
   exitMaskEditorFullscreen();
+  state.apiMode = PAGE_OPTIONS.apiMode;
   state.mode = entry.form.mode;
   el.prompt.value = entry.form.prompt;
   setModelControlValue('response', entry.form.responseModel);
@@ -2877,6 +3039,7 @@ function restoreHistoryEntry(entry) {
   state.lastDurationMs = normalizeDurationMs(entry.durationMs);
   state.activeHistoryId = entry.id;
   state.submitError = '';
+  updateApiModeUI();
   updateModeUI();
   updateSizeUI();
   renderSourceImages();
@@ -2922,10 +3085,14 @@ function formatHistoryTime(value) {
 
 function formatHistoryMeta(entry) {
   const modeLabel = entry.form.mode === 'generate' ? '文生图' : entry.form.mode === 'mask' ? '图生图（遮罩）' : '图生图';
+  const apiModeLabel = normalizeApiMode(entry.form.apiMode) === 'images' ? 'Images API' : 'Responses API';
   const responseModel = entry.form.responseModel || DEFAULT_RESPONSE_MODEL;
-  const imageModel = DEFAULT_IMAGE_MODEL;
+  const imageModel = entry.form.model || DEFAULT_IMAGE_MODEL;
   const size = formatHistorySize(entry.form);
-  return `${modeLabel} · ${responseModel} · ${imageModel} · ${size}`;
+  const modelText = normalizeApiMode(entry.form.apiMode) === 'images'
+    ? imageModel
+    : `${responseModel} · ${imageModel}`;
+  return `${apiModeLabel} · ${modeLabel} · ${modelText} · ${size}`;
 }
 
 function formatHistorySize(form) {
@@ -3279,6 +3446,14 @@ function detectMimeTypeFromUrl(url, fallback) {
   if (url.startsWith('data:')) {
     const match = url.match(/^data:([^;]+);/);
     return match?.[1] || fallback;
+  }
+  try {
+    const pathname = new URL(url, window.location.href).pathname.toLowerCase();
+    if (pathname.endsWith('.jpg') || pathname.endsWith('.jpeg')) return 'image/jpeg';
+    if (pathname.endsWith('.webp')) return 'image/webp';
+    if (pathname.endsWith('.png')) return 'image/png';
+  } catch {
+    // fallback below
   }
   return fallback;
 }
