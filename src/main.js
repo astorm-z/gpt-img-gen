@@ -533,6 +533,7 @@ function clearPrompt() {
 }
 
 async function startPromptPolish() {
+  if (state.apiMode === 'images') return;
   if (state.promptPolishing) return;
   const validationError = validatePromptPolishForm();
   if (validationError) {
@@ -586,6 +587,7 @@ async function startPromptPolish() {
 }
 
 function validatePromptPolishForm() {
+  if (state.apiMode === 'images') return 'Images API 模式不支持提示词润色。';
   if (state.submitting) return '图片生成请求进行中，请稍后再润色提示词。';
   if (!getApiBaseUrl()) return '请填写 API URL。';
   if (!getApiKey()) return '请填写 API Key。';
