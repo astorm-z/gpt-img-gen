@@ -23,6 +23,7 @@ const CUSTOM_SIZE_MAX_PIXELS = 8294400;
 const DEFAULT_OUTPUT_COMPRESSION = 100;
 const DEFAULT_INPUT_FIDELITY = 'low';
 const DEFAULT_REASONING_EFFORT = 'xhigh';
+const DEFAULT_IMAGE_STREAM_MODE = 'stream';
 const DEFAULT_MASK_CANVAS_WIDTH = 1024;
 const DEFAULT_MASK_CANVAS_HEIGHT = 1024;
 const MAX_UNDO_STACK_SIZE = 20;
@@ -90,6 +91,7 @@ const el = {
   reasoningEffort: document.getElementById('reasoningEffort'),
   outputFormat: document.getElementById('outputFormat'),
   outputCompression: document.getElementById('outputCompression'),
+  imageStreamMode: document.getElementById('imageStreamMode'),
   clearHistoryButton: document.getElementById('clearHistoryButton'),
   resetButton: document.getElementById('resetButton'),
   submitButton: document.getElementById('submitButton'),
@@ -240,7 +242,7 @@ function bindEvents() {
     });
   });
   el.advancedDetails.addEventListener('toggle', persistAdvancedSettings);
-  [el.quality, el.reasoningEffort, el.outputFormat, el.outputCompression].forEach((input) => {
+  [el.quality, el.reasoningEffort, el.outputFormat, el.outputCompression, el.imageStreamMode].forEach((input) => {
     input.addEventListener('change', persistAdvancedSettings);
     input.addEventListener('input', persistAdvancedSettings);
   });
@@ -907,8 +909,9 @@ function updateRunSummary() {
   const size = getCurrentSizeDisplay();
   const format = resolveOutputFormatValue().toUpperCase();
   const quality = el.quality.value ? `质量 ${el.quality.value}` : '默认质量';
+  const streamPart = state.apiMode === 'images' ? ` · ${getImageStreamModeLabel()}` : '';
   const sourcePart = state.mode === 'generate' ? '' : ` · ${state.sourceImages.length} 张源图`;
-  const summary = `${apiModeLabel} · ${modeLabel} · ${size} · ${format} · ${quality}${sourcePart}`;
+  const summary = `${apiModeLabel} · ${modeLabel} · ${size} · ${format} · ${quality}${streamPart}${sourcePart}`;
   el.submitSummary.textContent = state.submitting ? `正在生成：${summary}` : `准备生成：${summary}`;
 }
 
@@ -1674,13 +1677,13 @@ async function buildImagesApiRequest() {
 }
 
 function buildImagesGenerationPayload() {
-  return appendImagesPayloadOptions({
+  const payload = appendImagesPayloadOptions({
     model: resolveImageModelValue(),
     prompt: trimmedStringValue(el.prompt.value),
-    size: resolveSizeValue(),
-    stream: true,
-    partial_images: FIXED_PARTIAL_IMAGES
+    size: resolveSizeValue()
   });
+  appendImagesStreamPayloadOptions(payload);
+  return payload;
 }
 
 async function buildImagesEditFormData() {
@@ -1692,8 +1695,7 @@ async function buildImagesEditFormData() {
   formData.append('model', resolveImageModelValue());
   formData.append('prompt', trimmedStringValue(el.prompt.value));
   formData.append('size', resolveSizeValue());
-  formData.append('stream', 'true');
-  formData.append('partial_images', String(FIXED_PARTIAL_IMAGES));
+  appendImagesStreamFormDataOptions(formData);
 
   const imageFieldName = imagesToSubmit.length > 1 ? 'image[]' : 'image';
   for (const item of imagesToSubmit) {
@@ -1720,6 +1722,12 @@ function appendImagesPayloadOptions(payload) {
   return payload;
 }
 
+function appendImagesStreamPayloadOptions(payload) {
+  const streaming = shouldUseImagesStream();
+  payload.stream = streaming;
+  if (streaming) payload.partial_images = FIXED_PARTIAL_IMAGES;
+}
+
 function appendImagesFormDataOptions(formData) {
   const quality = resolveImagesQualityValue();
   const outputFormat = resolveOutputFormatValue();
@@ -1732,6 +1740,12 @@ function appendImagesFormDataOptions(formData) {
   if (!isInputFidelityUnsupportedImageModel()) {
     formData.append('input_fidelity', DEFAULT_INPUT_FIDELITY);
   }
+}
+
+function appendImagesStreamFormDataOptions(formData) {
+  const streaming = shouldUseImagesStream();
+  formData.append('stream', String(streaming));
+  if (streaming) formData.append('partial_images', String(FIXED_PARTIAL_IMAGES));
 }
 
 function resolveImagesQualityValue() {
@@ -1830,6 +1844,14 @@ function resolveOutputCompressionForFormat(format) {
 
 function resolveReasoningEffortValue() {
   return normalizeReasoningEffort(el.reasoningEffort.value);
+}
+
+function shouldUseImagesStream() {
+  return normalizeImageStreamMode(el.imageStreamMode.value) === 'stream';
+}
+
+function getImageStreamModeLabel() {
+  return shouldUseImagesStream() ? '流式' : '非流式';
 }
 
 function isInputFidelityUnsupportedImageModel() {
@@ -2673,6 +2695,7 @@ function captureCurrentForm() {
     reasoningEffort: stringValue(el.reasoningEffort.value),
     outputFormat: stringValue(el.outputFormat.value),
     outputCompression: stringValue(el.outputCompression.value),
+    imageStreamMode: normalizeImageStreamMode(el.imageStreamMode.value),
     advancedOpen: el.advancedDetails.open
   };
 }
@@ -2794,6 +2817,7 @@ function toPlainHistoryEntry(entry) {
       reasoningEffort: entry.form.reasoningEffort,
       outputFormat: entry.form.outputFormat,
       outputCompression: entry.form.outputCompression,
+      imageStreamMode: entry.form.imageStreamMode,
       advancedOpen: entry.form.advancedOpen
     },
     results: entry.results.map((image) => ({
@@ -2846,6 +2870,7 @@ function normalizeCachedForm(value) {
     reasoningEffort: normalizeReasoningEffort(value.reasoningEffort),
     outputFormat: normalizeOptionValue(stringValue(value.outputFormat), ['', 'png', 'jpeg', 'webp']),
     outputCompression: stringValue(value.outputCompression),
+    imageStreamMode: normalizeImageStreamMode(value.imageStreamMode),
     advancedOpen: value.advancedOpen === true
   };
 }
@@ -3034,6 +3059,7 @@ function restoreHistoryEntry(entry) {
   el.reasoningEffort.value = entry.form.reasoningEffort;
   el.outputFormat.value = entry.form.outputFormat;
   el.outputCompression.value = entry.form.outputCompression;
+  el.imageStreamMode.value = entry.form.imageStreamMode;
   el.advancedDetails.open = entry.form.advancedOpen;
   state.resultImages = [...entry.results];
   state.restoredFromCache = true;
@@ -3344,6 +3370,7 @@ function applyAdvancedSettings(settings) {
   el.reasoningEffort.value = settings.reasoningEffort;
   el.outputFormat.value = settings.outputFormat;
   el.outputCompression.value = settings.outputCompression;
+  el.imageStreamMode.value = settings.imageStreamMode;
   el.advancedDetails.open = settings.advancedOpen;
 }
 
@@ -3353,6 +3380,7 @@ function persistAdvancedSettings() {
     reasoningEffort: stringValue(el.reasoningEffort.value),
     outputFormat: stringValue(el.outputFormat.value),
     outputCompression: stringValue(el.outputCompression.value),
+    imageStreamMode: normalizeImageStreamMode(el.imageStreamMode.value),
     advancedOpen: el.advancedDetails.open
   };
   localStorage.setItem(ADVANCED_CACHE_KEY, JSON.stringify(payload));
@@ -3367,6 +3395,7 @@ function normalizeAdvancedSettings(value) {
     reasoningEffort: normalizeReasoningEffort(value.reasoningEffort),
     outputFormat: normalizeOptionValue(stringValue(value.outputFormat), ['', 'png', 'jpeg', 'webp']),
     outputCompression: stringValue(value.outputCompression),
+    imageStreamMode: normalizeImageStreamMode(value.imageStreamMode),
     advancedOpen: value.advancedOpen === true
   };
 }
@@ -3377,8 +3406,13 @@ function createDefaultAdvancedSettings() {
     reasoningEffort: DEFAULT_REASONING_EFFORT,
     outputFormat: '',
     outputCompression: '',
+    imageStreamMode: DEFAULT_IMAGE_STREAM_MODE,
     advancedOpen: false
   };
+}
+
+function normalizeImageStreamMode(value) {
+  return trimmedStringValue(value) === 'non_stream' ? 'non_stream' : DEFAULT_IMAGE_STREAM_MODE;
 }
 
 function normalizeNonNegativeInt(value) {
