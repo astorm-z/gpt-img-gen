@@ -1,0 +1,29 @@
+src/main.js
+  s_531ea871e24225::t_78f8444bf4da6f 912,914
+  s_531ea871e24225::t_da40193513bfbd 3373,3383,3398,3409,3414-3415
+  s_531ea871e24225::t_398424ecb00f4e 26,94
+  s_531ea871e24225::t_854622f1f2c095 1680,1683,1685-1686,1698,1725-1730,1745-1748
+  s_531ea871e24225::t_f0b135021e5f76 3062
+  s_531ea871e24225::t_9b848cfe8a4a45 1849-1856
+  s_531ea871e24225::t_d9a05622a71017 2698
+  s_531ea871e24225::t_b3f45187405928 245
+  s_531ea871e24225::t_3680b84c68e2e5 2820,2873
+index.html
+  s_531ea871e24225::t_0a1e214a710649 246-253
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "0483246c42d74bbb60dcaa4b80026ff088a975ff",
+  "prompts": {},
+  "sessions": {
+    "s_531ea871e24225": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e90ab-4be1-7aa2-84c1-72d5e459f696",
+        "model": "gpt-5.5"
+      },
+      "human_author": "astorm-z <forczc@foxmail.com>"
+    }
+  }
+}
