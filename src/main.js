@@ -23,7 +23,7 @@ const CUSTOM_SIZE_MAX_PIXELS = 8294400;
 const DEFAULT_OUTPUT_COMPRESSION = 100;
 const DEFAULT_INPUT_FIDELITY = 'low';
 const DEFAULT_REASONING_EFFORT = 'xhigh';
-const DEFAULT_IMAGE_STREAM_MODE = 'stream';
+const DEFAULT_IMAGE_STREAM_MODE = 'non_stream';
 const DEFAULT_MASK_CANVAS_WIDTH = 1024;
 const DEFAULT_MASK_CANVAS_HEIGHT = 1024;
 const MAX_UNDO_STACK_SIZE = 20;
@@ -3362,7 +3362,7 @@ function restoreAdvancedSettings() {
   } catch {
     localStorage.removeItem(ADVANCED_CACHE_KEY);
   }
-  if (parsed) applyAdvancedSettings(normalizeAdvancedSettings(parsed));
+  applyAdvancedSettings(parsed ? normalizeAdvancedSettings(parsed) : createDefaultAdvancedSettings());
 }
 
 function applyAdvancedSettings(settings) {
